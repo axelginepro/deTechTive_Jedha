@@ -1,0 +1,82 @@
+:root {
+    --primary-color: #0a0a0a;
+    --accent-color: #f1c40f; /* Jaune enquête */
+    --text-color: #e0e0e0;
+    --card-bg: #1a1a1a;
+    --border-color: #333;
+}
+
+body {
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    font-family: 'Courier New', Courier, monospace; /* Style machine à écrire */
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.container {
+    width: 90%;
+    max-width: 1000px;
+    background: var(--card-bg);
+    padding: 30px;
+    border-top: 5px solid var(--accent-color);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+h1, h2 {
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 10px;
+}
+
+/* Formulaires */
+input[type="text"], input[type="password"], textarea, file {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    background: #222;
+    border: 1px solid var(--border-color);
+    color: white;
+}
+
+button {
+    background: var(--accent-color);
+    color: black;
+    border: none;
+    padding: 12px 25px;
+    font-weight: bold;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+
+button:hover {
+    background: #d4ac0d;
+}
+
+/* Liste des missions */
+.mission-card {
+    background: #252525;
+    border-left: 3px solid var(--accent-color);
+    padding: 15px;
+    margin: 15px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-badge {
+    background: #333;
+    padding: 5px 10px;
+    font-size: 0.8rem;
+    color: var(--accent-color);
+}
+
+.header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
