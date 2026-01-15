@@ -3,7 +3,8 @@ session_start();
 
 // --- 1. CONFIGURATION ET CONNEXION ---
 $bdd_ip = "192.168.10.11";
-$file_server_ip = "192.168.10.13";
+// Utilisation du nom DNS au lieu de l'IP pour le File Server
+$file_server_name = "file-server"; 
 $msg_status = "";
 
 try {
@@ -27,18 +28,23 @@ if (isset($_POST['mission_desc']) && $db_online) {
     exit;
 }
 
-// --- 3. UPLOAD SÉCURISÉ : FILE SERVER ---
+// --- 3. UPLOAD SÉCURISÉ : FILE SERVER (Windows UNC Path) ---
 if (isset($_FILES['evidence']) && isset($_POST['target_mission_id'])) {
-    $mission_id = (int)$_POST['target_mission_id']; // Forçage en entier pour la sécurité
-    $upload_dir = "uploads/mission_" . $mission_id . "/";
+    $mission_id = (int)$_POST['target_mission_id']; 
     
+    // Chemin UNC Windows : \\file-server\nom_du_partage\ (ajuste 'partage' par ton nom réel)
+    $upload_dir = "\\\\".$file_server_name."\\partage\\mission_" . $mission_id . "\\";
+    
+    // Création du dossier distant s'il n'existe pas
     if (!is_dir($upload_dir)) { 
         mkdir($upload_dir, 0777, true); 
     }
     
     $file_path = $upload_dir . basename($_FILES["evidence"]["name"]);
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $file_path)) {
-        $msg_status = "✅ Fichier transféré vers le stockage sécurisé (10.13)";
+        $msg_status = "✅ Fichier transféré vers le stockage sécurisé (file-server)";
+    } else {
+        $msg_status = "❌ Erreur de transfert : Vérifiez les droits d'accès au partage réseau.";
     }
 }
 
@@ -93,7 +99,7 @@ $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")-
         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 40px 0;">
 
         <section>
-            <h2>📁 Preuves Numériques (File Server : <?php echo $file_server_ip; ?>)</h2>
+            <h2>📁 Preuves Numériques (File Server : //<?php echo $file_server_name; ?>)</h2>
             <p>Classez les fichiers dans les dossiers de missions correspondants.</p>
             
             <form action="dashboard.php" method="POST" enctype="multipart/form-data">
@@ -110,7 +116,8 @@ $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")-
         </section>
 
         <footer style="margin-top: 50px; font-size: 0.8rem; color: #666; text-align: center;">
-            Sécurité : <strong>PDO Prepared Statements</strong> & <strong>XSS Filtering</strong> | Segment BDD : 10.11 | Stockage : 10.13
+            Sécurité : <strong>PDO Prepared Statements</strong> & <strong>XSS Filtering</strong> | Segment BDD : 10.11 | Nom Stockage : <?php echo $file_server_name; ?>
         </footer>
     </div>
 </body>
+</html>
