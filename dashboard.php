@@ -3,12 +3,10 @@ session_start();
 
 // --- 1. CONFIGURATION ET CONNEXION ---
 $bdd_ip = "192.168.10.11";
-// Utilisation du nom DNS au lieu de l'IP pour le File Server
 $file_server_name = "file-server"; 
 $msg_status = "";
 
 try {
-    // Utilisation de PDO avec Timeout pour éviter les blocages réseau
     $pdo = new PDO("mysql:host=$bdd_ip;dbname=detective_db;charset=utf8", "admin", "password", [
         PDO::ATTR_TIMEOUT => 2,
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
@@ -21,34 +19,38 @@ try {
 
 // --- 2. PROTECTION SQL : AJOUT MISSION ---
 if (isset($_POST['mission_desc']) && $db_online) {
-    // Requête préparée pour bloquer les injections SQL
     $stmt = $pdo->prepare("INSERT INTO missions (titre, statut) VALUES (?, 'EN COURS')");
     $stmt->execute([$_POST['mission_desc']]);
     header("Location: dashboard.php");
     exit;
 }
 
-// --- 3. UPLOAD SÉCURISÉ : FILE SERVER (Windows UNC Path) ---
+// --- 3. UPLOAD SÉCURISÉ : VERS LE SERVEUR DE FICHIERS ---
 if (isset($_FILES['evidence']) && isset($_POST['target_mission_id'])) {
-    $mission_id = (int)$_POST['target_mission_id']; 
+    $mission_id = (int)$_POST['target_mission_id'];
     
-    // Chemin UNC Windows : \\file-server\nom_du_partage\ (ajuste 'partage' par ton nom réel)
-    $upload_dir = "\\\\".$file_server_name."\\partage\\mission_" . $mission_id . "\\";
+    // Chemin UNC : \\file-server\resources\mission_X\
+    // Remplace 'resources' par le nom de ton partage réel si besoin
+    $upload_dir = "\\\\".$file_server_name."\\resources\\mission_" . $mission_id . "\\";
     
-    // Création du dossier distant s'il n'existe pas
+    // Création du sous-dossier de mission s'il n'existe pas
     if (!is_dir($upload_dir)) { 
-        mkdir($upload_dir, 0777, true); 
+        @mkdir($upload_dir, 0777, true); 
     }
     
-    $file_path = $upload_dir . basename($_FILES["evidence"]["name"]);
-    if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $file_path)) {
-        $msg_status = "✅ Fichier transféré vers le stockage sécurisé (file-server)";
+    if (is_dir($upload_dir)) {
+        $file_path = $upload_dir . basename($_FILES["evidence"]["name"]);
+        if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $file_path)) {
+            $msg_status = "✅ Fichier transféré dans : " . $upload_dir;
+        } else {
+            $msg_status = "❌ Erreur de transfert (Vérifiez les droits d'écriture).";
+        }
     } else {
-        $msg_status = "❌ Erreur de transfert : Vérifiez les droits d'accès au partage réseau.";
+        $msg_status = "❌ Impossible d'accéder ou de créer le dossier sur le réseau.";
     }
 }
 
-// Récupération des données
+// Récupération des missions pour peupler la liste
 $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC) : [];
 ?>
 
@@ -76,7 +78,7 @@ $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")-
             <h2>📋 Missions Assignées (BDD : <?php echo $bdd_ip; ?>)</h2>
             
             <?php if (empty($missions)): ?>
-                <div class="mission-card"><div><strong>Aucune mission active.</strong></div></div>
+                <div class="mission-card"><div><strong>Aucune mission trouvée en BDD. Ajoutez-en une ci-dessous.</strong></div></div>
             <?php else: ?>
                 <?php foreach($missions as $m): ?>
                 <div class="mission-card">
@@ -100,7 +102,7 @@ $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")-
 
         <section>
             <h2>📁 Preuves Numériques (File Server : //<?php echo $file_server_name; ?>)</h2>
-            <p>Classez les fichiers dans les dossiers de missions correspondants.</p>
+            <p>Sélectionnez un dossier de mission pour l'upload.</p>
             
             <form action="dashboard.php" method="POST" enctype="multipart/form-data">
                 <select name="target_mission_id" required style="width: 100%; padding: 10px; margin-bottom: 10px; background: #222; color: white; border: 1px solid #444;">
@@ -116,7 +118,7 @@ $missions = $db_online ? $pdo->query("SELECT * FROM missions ORDER BY id DESC")-
         </section>
 
         <footer style="margin-top: 50px; font-size: 0.8rem; color: #666; text-align: center;">
-            Sécurité : <strong>PDO Prepared Statements</strong> & <strong>XSS Filtering</strong> | Segment BDD : 10.11 | Nom Stockage : <?php echo $file_server_name; ?>
+            Base de données : <?php echo $bdd_ip; ?> | Stockage : \\<?php echo $file_server_name; ?>\resources
         </footer>
     </div>
 </body>
