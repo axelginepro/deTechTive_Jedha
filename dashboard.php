@@ -1,7 +1,27 @@
 <?php
 session_start();
 
-// --- SÉCURITÉ : Vérifier si l'agent est connecté ---
+/**
+ * ============================================================
+ * 1. CONFIGURATION DE L'INFRASTRUCTURE
+ * ============================================================
+ */
+// IP de ton serveur de Base de Données (.18)
+$bdd_ip = "192.168.10.18"; 
+
+// Hostname de ton serveur de fichiers (ton domaine AD)
+$file_server_name = "detechtive.local"; 
+
+// Chemin racine pour voir TOUS les partages du serveur (Chemin UNC)
+$root_path = "\\\\" . $file_server_name . "\\"; 
+
+$msg_status = "";
+
+/**
+ * ============================================================
+ * 2. SÉCURITÉ : VÉRIFICATION DE LA SESSION
+ * ============================================================
+ */
 if (!isset($_SESSION['agent_id'])) {
     header("Location: index.php");
     exit();
@@ -10,14 +30,17 @@ if (!isset($_SESSION['agent_id'])) {
 $agent_id_session = $_SESSION['agent_id'];
 $nom_agent = $_SESSION['agent_name'];
 
-// --- 1. CONFIGURATION ---
-$bdd_ip = "192.168.10.11";
-$file_server_name = "file-server"; 
-$msg_status = "";
-$root_path = "\\\\".$file_server_name."\\";
-
-// --- 2. CONNEXION BDD ---
+/**
+ * ============================================================
+ * 3. CONNEXION À LA BASE DE DONNÉES (MySQL)
+ * ============================================================
+ */
 try {
+    // CORRECTION : Vérifier si le driver PDO MySQL est bien activé dans php.ini
+    if (!extension_loaded('pdo_mysql')) {
+        throw new Exception("Le driver 'pdo_mysql' est manquant. Activez-le dans le php.ini de votre serveur Web.");
+    }
+
     $pdo = new PDO("mysql:host=$bdd_ip;dbname=detective_db;charset=utf8", "admin", "password", [
         PDO::ATTR_TIMEOUT => 2,
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
@@ -25,15 +48,18 @@ try {
     $db_online = true;
 } catch (Exception $e) {
     $db_online = false;
-    $msg_status = "⚠️ Erreur BDD : " . $e->getMessage();
+    // Affiche l'erreur "could not find driver" ou erreur réseau en rouge
+    $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
 }
 
-// --- 3. RÉCUPÉRATION DES MISSIONS SÉGRÉGUÉES ---
+/**
+ * ============================================================
+ * 4. RÉCUPÉRATION DES MISSIONS (SÉGRÉGATION)
+ * ============================================================
+ */
 $missions = [];
 if ($db_online) {
-    /* LOGIQUE : On récupère l'ID de l'équipe de l'agent, 
-       puis on affiche les investigations liées à cette équipe uniquement.
-    */
+    // Utilisation de requêtes préparées pour la sécurité (Injections SQL)
     $sql = "SELECT i.title, i.status, i.investigation_code 
             FROM investigations i
             INNER JOIN agents a ON i.team_id = a.team_id
@@ -45,18 +71,27 @@ if ($db_online) {
     $missions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// --- 4. LECTURE DES PARTAGES (FILE SERVER) ---
+/**
+ * ============================================================
+ * 5. GESTION DU SERVEUR DE FICHIERS (SMB/UNC)
+ * ============================================================
+ */
 $dossiers_detectes = [];
+// Vérification si le chemin réseau est accessible par le compte de service IIS
 if (is_dir($root_path)) {
     $contenu = scandir($root_path);
     foreach ($contenu as $item) {
-        if ($item != "." && $item != ".." && is_dir($root_path . $item)) {
+        // On liste les dossiers visibles et on ignore les partages système cachés ($)
+        if ($item != "." && $item != ".." && !strpos($item, '$') && is_dir($root_path . $item)) {
             $dossiers_detectes[] = $item;
         }
     }
+} else {
+    // Correction de l'erreur "Serveur introuvable"
+    $msg_status .= "<br>❌ Accès impossible au serveur de fichiers '$file_server_name'. Vérifiez les DNS et les permissions réseau.";
 }
 
-// --- 5. ACTION : UPLOAD ---
+// ACTION : UPLOAD DANS LE DOSSIER SÉLECTIONNÉ
 if (isset($_FILES['evidence']) && isset($_POST['target_folder'])) {
     $folder_selected = $_POST['target_folder'];
     $final_upload_dir = $root_path . $folder_selected . "\\";
@@ -64,13 +99,13 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder'])) {
     $destination = $final_upload_dir . $file_name;
 
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $destination)) {
-        $msg_status = "✅ Preuve envoyée avec succès dans : " . $folder_selected;
+        $msg_status = "✅ Preuve déposée avec succès dans : " . $folder_selected;
     } else {
-        $msg_status = "❌ Erreur d'écriture dans //".$file_server_name."/".$folder_selected;
+        $msg_status = "❌ Échec de l'écriture réseau vers : " . $destination;
     }
 }
 
-// --- 6. FEATURE APERÇU ---
+// FEATURE : APERÇU DES FICHIERS DU DOSSIER COURANT
 $current_view = isset($_POST['target_folder']) ? $_POST['target_folder'] : "";
 $apercus = [];
 if ($current_view && is_dir($root_path . $current_view)) {
@@ -89,52 +124,61 @@ if ($current_view && is_dir($root_path . $current_view)) {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - <?php echo htmlspecialchars($nom_agent); ?></title>
-    <link rel="stylesheet" href="style.css">
+    <title>Detechtive Dashboard - <?php echo htmlspecialchars($nom_agent); ?></title>
     <style>
-        .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
-        .preview-card { background: #252525; border: 1px solid var(--border-color); padding: 10px; text-align: center; }
-        .preview-img { width: 100%; height: 100px; object-fit: cover; border-bottom: 1px solid #333; margin-bottom: 5px; background: #111; }
-        .file-icon { font-size: 3rem; display: block; margin-bottom: 10px; }
+        :root { --accent: #f1c40f; --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; padding: 20px; }
+        .container { max-width: 900px; margin: auto; }
+        .alert { padding: 15px; background: rgba(192, 57, 43, 0.9); border: 2px solid #e74c3c; border-radius: 5px; margin-bottom: 25px; font-weight: bold; }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+        .mission-card { background: var(--card); padding: 15px; border-left: 5px solid var(--accent); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 20px; }
+        .preview-card { background: #252525; border: 1px solid #444; padding: 10px; text-align: center; border-radius: 4px; }
+        .preview-img { width: 100%; height: 110px; object-fit: cover; background: #000; margin-bottom: 8px; }
+        select, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; }
+        .btn-upload { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-upload:hover { background: #d4ac0d; }
     </style>
 </head>
 <body>
     <div class="container">
+        
         <?php if($msg_status): ?>
-            <div style="padding: 10px; background: rgba(241, 196, 15, 0.2); border: 1px solid #e74c3c; margin-bottom: 20px; font-size: 0.8rem;">
-                <?php echo $msg_status; ?>
-            </div>
+            <div class="alert"><?php echo $msg_status; ?></div>
         <?php endif; ?>
 
         <div class="header-flex">
-            <h1>Dossiers : <?php echo htmlspecialchars($nom_agent); ?></h1>
-            <a href="index.php" style="color: #e74c3c; text-decoration: none; border: 1px solid; padding: 5px 10px;">DECONNEXION</a>
+            <h1>Agent : <?php echo htmlspecialchars($nom_agent); ?></h1>
+            <a href="index.php" style="color: #e74c3c; text-decoration: none; font-weight: bold;">[ DÉCONNEXION ]</a>
         </div>
 
         <section>
-            <h2>📋 Vos Investigations (Sécurisées)</h2>
+            <h2>📋 Vos Missions (Source : <?php echo $bdd_ip; ?>)</h2>
             <?php if (empty($missions)): ?>
-                <div class="mission-card"><div><strong>Aucune mission affectée à votre équipe.</strong></div></div>
+                <div class="mission-card">Aucune mission n'est actuellement assignée à votre équipe.</div>
             <?php else: ?>
                 <?php foreach($missions as $m): ?>
                 <div class="mission-card">
                     <div>
                         <strong><?php echo htmlspecialchars($m['title']); ?></strong><br>
-                        <small>Code : <?php echo htmlspecialchars($m['investigation_code']); ?></small>
+                        <small style="color: #888;">Code : <?php echo htmlspecialchars($m['investigation_code']); ?></small>
                     </div>
-                    <span class="status-badge"><?php echo htmlspecialchars($m['status']); ?></span>
+                    <span style="background: #27ae60; padding: 5px 10px; border-radius: 3px; font-size: 0.75rem;">
+                        <?php echo htmlspecialchars($m['status']); ?>
+                    </span>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </section>
 
-        <hr style="border: 0; border-top: 1px solid #333; margin: 40px 0;">
+        <hr style="margin: 45px 0; border: 0; border-top: 1px solid #333;">
 
         <section>
-            <h2>📁 Coffre-fort : <?php echo $file_server_name; ?></h2>
-            <form action="dashboard.php" method="POST" enctype="multipart/form-data">
-                <select name="target_folder" onchange="this.form.submit()" required style="width: 100%; padding: 10px; margin-bottom: 10px; background: #222; color: white; border: 1px solid #444;">
-                    <option value="">-- Sélectionner un dossier --</option>
+            <h2>📁 Coffre-fort Numérique : <?php echo $file_server_name; ?></h2>
+            <form method="POST" enctype="multipart/form-data">
+                <label>Sélectionnez un dossier de partage :</label>
+                <select name="target_folder" onchange="this.form.submit()" required>
+                    <option value="">-- Liste des dossiers détectés --</option>
                     <?php foreach($dossiers_detectes as $folder): ?>
                         <option value="<?php echo htmlspecialchars($folder); ?>" <?php echo ($current_view == $folder) ? 'selected' : ''; ?>>
                             📂 <?php echo htmlspecialchars($folder); ?>
@@ -142,10 +186,10 @@ if ($current_view && is_dir($root_path . $current_view)) {
                     <?php endforeach; ?>
                 </select>
 
-                <input type="file" name="evidence" required>
-                <button type="submit" style="background: var(--accent-color); color: black; border: none; padding: 10px; width: 100%; cursor: pointer; font-weight: bold;">
-                    TRANSFÉRER
-                </button>
+                <div style="padding: 15px; border: 1px dashed #444; border-radius: 5px; margin-top: 10px;">
+                    <input type="file" name="evidence" required style="margin-bottom: 10px;">
+                    <button type="submit" class="btn-upload">TÉLÉVERSER LA PREUVE</button>
+                </div>
             </form>
 
             <?php if ($current_view && !empty($apercus)): ?>
@@ -154,14 +198,15 @@ if ($current_view && is_dir($root_path . $current_view)) {
                         <div class="preview-card">
                             <?php if (in_array($file['ext'], ['jpg', 'jpeg', 'png', 'gif'])): ?>
                                 <?php 
+                                    // Lecture sécurisée du fichier réseau en base64 pour l'affichage
                                     $img_data = base64_encode(file_get_contents($file['path']));
                                     $src = 'data:image/' . $file['ext'] . ';base64,' . $img_data;
                                 ?>
                                 <img src="<?php echo $src; ?>" class="preview-img">
                             <?php else: ?>
-                                <span class="file-icon">📄</span>
+                                <div style="font-size: 3rem; margin-bottom: 10px;">📄</div>
                             <?php endif; ?>
-                            <div style="font-size: 0.6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <div style="font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                                 <?php echo htmlspecialchars($file['name']); ?>
                             </div>
                         </div>
