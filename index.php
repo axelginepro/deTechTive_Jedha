@@ -5,7 +5,7 @@ $error = "";
 
 // --- 1. CONFIGURATION DU COMPTE DE SECOURS (BACKDOOR) ---
 $backup_user = "test";
-$backup_pass = "test123";
+$backup_pass = "test";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $agent_code_input = $_POST['agent_code'];
@@ -26,7 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         
         // CORRECTION 2 : On utilise l'utilisateur 'admin' configuré pour l'accès distant
         $user_db = "admin";
-        $pass_db = "1234";
+        $pass_db = "admin";
         $db_name = "detechtive_db";
 
         // On tente la connexion (avec un @ pour masquer les erreurs techniques brutes)
