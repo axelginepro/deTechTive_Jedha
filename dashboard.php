@@ -34,7 +34,7 @@ $nom_agent = $_SESSION['agent_name'];
  * ============================================================
  * 3. CONNEXION À LA BASE DE DONNÉES (MySQL)
  * ============================================================
- */
+ */ 
 try {
     // CORRECTION : Vérifier si le driver PDO MySQL est bien activé dans php.ini
     if (!extension_loaded('pdo_mysql')) {

@@ -11,7 +11,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $agent_code_input = $_POST['agent_code'];
     $password_input   = $_POST['password'];
 
-    // --- A. VÉRIFICATION DU COMPTE TEST ---
+    // --- A. VÉRIFICATION DU COMPTE TEST (Backdoor) ---
     if ($agent_code_input === $backup_user && $password_input === $backup_pass) {
         $_SESSION['agent_id'] = 999;
         $_SESSION['agent_name'] = "Agent TEST (Mode Secours)";
@@ -19,31 +19,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         exit();
     } 
     
-    // --- B. SINON, ON TENTE LA CONNEXION MARIADB ---
+    // --- B. SINON, ON TENTE LA CONNEXION À LA BASE DISTANTE ---
     else {
-        $host = "localhost";
-        $user_db = "root";
-        $pass_db = "";
+        // CORRECTION 1 : On pointe vers l'IP de la VM DATABASE
+        $host = "192.168.10.18"; 
+        
+        // CORRECTION 2 : On utilise l'utilisateur 'admin' configuré pour l'accès distant
+        $user_db = "admin";
+        $pass_db = "1234";
         $db_name = "detechtive_db";
 
+        // On tente la connexion (avec un @ pour masquer les erreurs techniques brutes)
         $conn = @mysqli_connect($host, $user_db, $pass_db, $db_name);
 
         if ($conn) {
             $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
-            $sql = "SELECT * FROM users WHERE username = '$agent_safe' AND password = '$password_input'";
+            
+            // CORRECTION 3 : On cherche dans la table 'agents' (et plus 'users')
+            $sql = "SELECT * FROM agents WHERE username = '$agent_safe' AND password = '$password_input'";
+            
             $result = mysqli_query($conn, $sql);
 
             if (mysqli_num_rows($result) > 0) {
                 $row = mysqli_fetch_assoc($result);
                 $_SESSION['agent_id'] = $row['id'];
-                $_SESSION['agent_name'] = $row['username'];
+                
+                // On récupère 'agent_name' pour un affichage plus joli sur le dashboard
+                $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
+                
                 header("Location: dashboard.php");
                 exit();
             } else {
-                $error = "Identifiants inconnus (ni test, ni base de données)";
+                $error = "Identifiants inconnus.";
             }
         } else {
-            $error = "Erreur : Base de données inaccessible (et ce n'est pas le compte test)";
+            // Affiche l'erreur précise pour t'aider à débugger le réseau
+            $error = "Erreur de connexion à la BDD ($host) : " . mysqli_connect_error();
         }
     }
 }
