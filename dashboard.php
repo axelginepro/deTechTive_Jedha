@@ -186,23 +186,6 @@ if ($current_view && is_dir($root_path . $current_view)) {
         </div>
 
         <section>
-            <div class="add-mission-box">
-                <h3 style="margin-top: 0; color: var(--accent);">➕ Créer une nouvelle mission</h3>
-                <form method="POST">
-                    <input type="text" name="title" placeholder="Titre de la mission (ex: Filature rue de la Paix)" required>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" name="code" placeholder="Code (ex: OP-2026-XYZ)" required style="flex: 1;">
-                        <select name="status" style="flex: 1;">
-                            <option value="En Cours">En Cours</option>
-                            <option value="Urgent">Urgent</option>
-                            <option value="Terminé">Terminé</option>
-                            <option value="Classifié">Classifié</option>
-                        </select>
-                    </div>
-                    <button type="submit" name="add_mission" class="btn-upload">ENREGISTRER LA MISSION</button>
-                </form>
-            </div>
-
             <h2>📋 Vos Missions</h2>
             <?php if (empty($missions)): ?>
                 <div class="mission-card">Aucune mission n'est actuellement assignée à votre équipe.</div>
@@ -220,6 +203,23 @@ if ($current_view && is_dir($root_path . $current_view)) {
                 <?php endforeach; ?>
             <?php endif; ?>
         </section>
+
+            <div class="add-mission-box">
+                <h3 style="margin-top: 0; color: var(--accent);">➕ Créer une nouvelle mission</h3>
+                <form method="POST">
+                    <input type="text" name="title" placeholder="Titre de la mission (ex: Filature rue de la Paix)" required>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" name="code" placeholder="Code (ex: OP-2026-XYZ)" required style="flex: 1;">
+                        <select name="status" style="flex: 1;">
+                            <option value="En Cours">En Cours</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Terminé">Terminé</option>
+                            <option value="Classifié">Classifié</option>
+                        </select>
+                    </div>
+                    <button type="submit" name="add_mission" class="btn-upload">ENREGISTRER LA MISSION</button>
+                </form>
+            </div>
 
         <hr style="margin: 45px 0; border: 0; border-top: 1px solid #333;">
 
