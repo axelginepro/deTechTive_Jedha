@@ -165,7 +165,7 @@ if ($current_view && is_dir($root_path . $current_view)) {
         </div>
 
         <section>
-            <h2>📋 Vos Missions (Source : <?php echo DB_SERVER; ?>)</h2>
+            <h2>📋 Vos Missions</h2>
             <?php if (empty($missions)): ?>
                 <div class="mission-card">Aucune mission n'est actuellement assignée à votre équipe.</div>
             <?php else: ?>
