@@ -4,6 +4,7 @@ session_start();
 $error = "";
 
 // --- 1. CONFIGURATION DU COMPTE DE SECOURS (BACKDOOR) ---
+// Note : Ce compte est indépendant de la base de données
 $backup_user = "test";
 $backup_pass = "test";
 
@@ -21,21 +22,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     
     // --- B. SINON, ON TENTE LA CONNEXION À LA BASE DISTANTE ---
     else {
-        // CORRECTION 1 : On pointe vers l'IP de la VM DATABASE
-        $host = "192.168.10.18"; 
-        
-        // CORRECTION 2 : On utilise l'utilisateur 'admin' configuré pour l'accès distant
-        $user_db = "admin";
-        $pass_db = "admin";
-        $db_name = "detechtive_db";
+        // CHARGEMENT DE LA CONFIGURATION
+        // Si config.php n'existe pas, le script s'arrête (sécurité)
+        if (!file_exists('config.php')) {
+            die("Erreur critique : Le fichier de configuration est manquant.");
+        }
+        require_once 'config.php';
 
-        // On tente la connexion (avec un @ pour masquer les erreurs techniques brutes)
-        $conn = @mysqli_connect($host, $user_db, $pass_db, $db_name);
+        // Connexion avec les constantes définies dans config.php
+        $conn = @mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
 
         if ($conn) {
+            // Sécurisation de l'entrée utilisateur
             $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
             
-            // CORRECTION 3 : On cherche dans la table 'agents' (et plus 'users')
+            // Recherche de l'agent dans la table 'agents'
             $sql = "SELECT * FROM agents WHERE username = '$agent_safe' AND password = '$password_input'";
             
             $result = mysqli_query($conn, $sql);
@@ -44,7 +45,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
                 $row = mysqli_fetch_assoc($result);
                 $_SESSION['agent_id'] = $row['id'];
                 
-                // On récupère 'agent_name' pour un affichage plus joli sur le dashboard
+                // Gestion du nom d'affichage
                 $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
                 
                 header("Location: dashboard.php");
@@ -53,8 +54,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
                 $error = "Identifiants inconnus.";
             }
         } else {
-            // Affiche l'erreur précise pour t'aider à débugger le réseau
-            $error = "Erreur de connexion à la BDD ($host) : " . mysqli_connect_error();
+            // Affichage de l'erreur technique (Utile pour le debug réseau)
+            $error = "Erreur de connexion à la BDD (" . DB_SERVER . ") : " . mysqli_connect_error();
         }
     }
 }
@@ -98,7 +99,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 
     <footer>
         <p>&copy; 2026 Detecthive Inc. Tous droits réservés.</p>
-        <p>v1.0</p>
+        <p>v1.1</p>
     </footer>
 
 </body>

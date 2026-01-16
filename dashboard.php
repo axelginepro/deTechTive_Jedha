@@ -1,15 +1,20 @@
 <?php
 session_start();
 
+// --- 0. CHARGEMENT DE LA SÉCURITÉ (CONFIG.PHP) ---
+// On charge les accès BDD depuis le fichier sécurisé
+if (!file_exists('config.php')) {
+    die("Erreur critique : Le fichier de configuration 'config.php' est manquant.");
+}
+require_once 'config.php';
+
 /**
  * ============================================================
- * 1. CONFIGURATION DE L'INFRASTRUCTURE
+ * 1. CONFIGURATION DE L'INFRASTRUCTURE (PARTIE FICHIERS)
  * ============================================================
  */
-// IP de ton serveur de Base de Données (.18)
-$bdd_ip = "192.168.10.18"; 
-
 // Hostname de ton serveur de fichiers (ton domaine AD)
+// (On laisse ça ici car c'est spécifique au dashboard)
 $file_server_name = "detechtive.local"; 
 
 // Chemin racine pour voir TOUS les partages du serveur (Chemin UNC)
@@ -36,19 +41,25 @@ $nom_agent = $_SESSION['agent_name'];
  * ============================================================
  */ 
 try {
-    // CORRECTION : Vérifier si le driver PDO MySQL est bien activé dans php.ini
+    // Vérifier si le driver PDO MySQL est bien activé
     if (!extension_loaded('pdo_mysql')) {
-        throw new Exception("Le driver 'pdo_mysql' est manquant. Activez-le dans le php.ini de votre serveur Web.");
+        throw new Exception("Le driver 'pdo_mysql' est manquant. Activez-le dans le php.ini.");
     }
 
-    $pdo = new PDO("mysql:host=$bdd_ip;dbname=detective_db;charset=utf8", "admin", "password", [
+    // --- MISE A JOUR SÉCURISÉE ---
+    // On utilise les constantes de config.php au lieu d'écrire en dur
+    $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
+    
+    $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, [
         PDO::ATTR_TIMEOUT => 2,
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
     ]);
+    
     $db_online = true;
+
 } catch (Exception $e) {
     $db_online = false;
-    // Affiche l'erreur "could not find driver" ou erreur réseau en rouge
+    // Affiche l'erreur technique seulement si nécessaire
     $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
 }
 
@@ -119,6 +130,7 @@ if ($current_view && is_dir($root_path . $current_view)) {
     }
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="fr">
