@@ -29,6 +29,13 @@ if (!isset($_SESSION['agent_id'])) {
 $agent_id_session = $_SESSION['agent_id'];
 $nom_agent = $_SESSION['agent_name'];
 
+// --- ANTI-DOUBLON : Récupération du message après redirection ---
+// Si on vient d'ajouter une mission, le message est stocké ici
+if (isset($_SESSION['flash_message'])) {
+    $msg_status = $_SESSION['flash_message'];
+    unset($_SESSION['flash_message']); // On le supprime pour qu'il ne s'affiche qu'une fois
+}
+
 /**
  * ============================================================
  * 3. CONNEXION À LA BASE DE DONNÉES (MySQL)
@@ -54,18 +61,15 @@ try {
 
 /**
  * ============================================================
- * 4. LOGIQUE : AJOUTER UNE MISSION (NOUVEAU)
+ * 4. LOGIQUE : AJOUTER UNE MISSION (CORRIGÉ ANTI-REFRESH)
  * ============================================================
  */
 if (isset($_POST['add_mission']) && $db_online) {
-    // 1. On récupère les données du formulaire
     $new_title = $_POST['title'];
     $new_code = $_POST['code'];
     $new_status = $_POST['status'];
 
     try {
-        // 2. On doit trouver de quelle équipe fait partie l'agent connecté
-        // (Pour lier la mission à son équipe, pas juste à lui)
         $stmt_team = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
         $stmt_team->execute([$agent_id_session]);
         $agent_data = $stmt_team->fetch(PDO::FETCH_ASSOC);
@@ -73,12 +77,17 @@ if (isset($_POST['add_mission']) && $db_online) {
         if ($agent_data) {
             $my_team_id = $agent_data['team_id'];
 
-            // 3. Insertion SQL
             $sql_insert = "INSERT INTO investigations (title, investigation_code, status, team_id) VALUES (?, ?, ?, ?)";
             $stmt_insert = $pdo->prepare($sql_insert);
             $stmt_insert->execute([$new_title, $new_code, $new_status, $my_team_id]);
 
-            $msg_status = "✅ Mission '$new_code' ajoutée avec succès !";
+            // --- LE FIX EST ICI ---
+            // 1. On stocke le succès dans la session
+            $_SESSION['flash_message'] = "✅ Mission '$new_code' ajoutée avec succès !";
+            
+            // 2. On redirige vers la même page pour "nettoyer" le POST
+            header("Location: dashboard.php"); 
+            exit(); // On arrête tout ici, le navigateur va recharger la page proprement
         }
     } catch (Exception $e) {
         $msg_status = "❌ Erreur lors de la création : " . $e->getMessage();
@@ -116,9 +125,6 @@ if (is_dir($root_path)) {
             $dossiers_detectes[] = $item;
         }
     }
-} else {
-    // On masque cette erreur si on n'est pas sur le réseau AD pour éviter de polluer l'écran en dev
-    // $msg_status .= "<br>❌ Accès impossible au serveur de fichiers.";
 }
 
 // ACTION : UPLOAD DANS LE DOSSIER SÉLECTIONNÉ
@@ -129,6 +135,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder'])) {
     $destination = $final_upload_dir . $file_name;
 
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $destination)) {
+        // Optionnel : Tu pourrais faire la même technique de redirection ici aussi
         $msg_status = "✅ Preuve déposée avec succès dans : " . $folder_selected;
     } else {
         $msg_status = "❌ Échec de l'écriture réseau vers : " . $destination;

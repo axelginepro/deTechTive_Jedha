@@ -99,7 +99,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 
     <footer>
         <p>&copy; 2026 Detecthive Inc. Tous droits réservés.</p>
-        <p>v1.1</p>
+        <p>v1.3</p>
     </footer>
 
 </body>
