@@ -4,6 +4,7 @@
     --text-color: #e0e0e0;
     --card-bg: #1a1a1a;
     --border-color: #333;
+    --error-color: #e74c3c; /* Rouge erreur */
 }
 
 body {
@@ -49,7 +50,6 @@ h1, h2 {
 }
 
 /* Formulaires */
-/* J'ai corrigé 'file' en 'input[type="file"]' car 'file' tout seul ne marche pas en CSS */
 input[type="text"], input[type="password"], textarea, input[type="file"] {
     width: 100%;
     padding: 12px;
@@ -97,4 +97,27 @@ button:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+/* --- NOUVEAU : STYLE DES MESSAGES D'ERREUR --- */
+.alert-error {
+    background-color: rgba(231, 76, 60, 0.15); /* Rouge transparent */
+    border: 1px solid var(--error-color);
+    border-left: 5px solid var(--error-color);
+    color: #ff6b6b;
+    padding: 15px;
+    margin-bottom: 25px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.2);
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Animation de tremblement */
+@keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
 }

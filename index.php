@@ -4,7 +4,6 @@ session_start();
 $error = "";
 
 // --- 1. CONFIGURATION DU COMPTE DE SECOURS (BACKDOOR) ---
-// Note : Ce compte est indépendant de la base de données
 $backup_user = "test";
 $backup_pass = "test";
 
@@ -23,39 +22,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     // --- B. SINON, ON TENTE LA CONNEXION À LA BASE DISTANTE ---
     else {
         // CHARGEMENT DE LA CONFIGURATION
-        // Si config.php n'existe pas, le script s'arrête (sécurité)
         if (!file_exists('config.php')) {
             die("Erreur critique : Le fichier de configuration est manquant.");
         }
         require_once 'config.php';
 
-        // Connexion avec les constantes définies dans config.php
+        // Le @ masque les erreurs PHP brutes, on gère l'erreur nous-mêmes via $conn
         $conn = @mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
 
         if ($conn) {
-            // Sécurisation de l'entrée utilisateur
             $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
-            
-            // Recherche de l'agent dans la table 'agents'
             $sql = "SELECT * FROM agents WHERE username = '$agent_safe' AND password = '$password_input'";
-            
             $result = mysqli_query($conn, $sql);
 
             if (mysqli_num_rows($result) > 0) {
                 $row = mysqli_fetch_assoc($result);
                 $_SESSION['agent_id'] = $row['id'];
-                
-                // Gestion du nom d'affichage
                 $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
-                
                 header("Location: dashboard.php");
                 exit();
             } else {
-                $error = "Identifiants inconnus.";
+                // Erreur stylisée
+                $error = "⛔ ACCÈS REFUSÉ : Identifiants invalides.";
             }
         } else {
-            // Affichage de l'erreur technique (Utile pour le debug réseau)
-            $error = "Erreur de connexion à la BDD (" . DB_SERVER . ") : " . mysqli_connect_error();
+            // Erreur technique
+            $error = "⚠️ ERREUR SYSTÈME : Connexion BDD impossible (" . mysqli_connect_error() . ")";
         }
     }
 }
@@ -77,13 +69,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         </div>
 
         <?php if($error): ?>
-            <div style="color: red; border: 1px solid red; padding: 10px; margin-bottom: 20px; text-align: center; font-weight: bold; background-color: #ffe6e6;">
-                [!] <?php echo $error; ?>
+            <div class="alert-error">
+                <?php echo $error; ?>
             </div>
         <?php endif; ?>
 
         <form action="index.php" method="POST">
-            <p style="font-size: 0.8rem; color: #555; margin-bottom: 15px; text-align:center;">LOGIN : test / PASS : test123</p>
             
             <label>CODE AGENT :</label>
             <input type="text" name="agent_code" placeholder="Identifiant..." required>
@@ -99,7 +90,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 
     <footer>
         <p>&copy; 2026 Detecthive Inc. Tous droits réservés.</p>
-        <p>v1.3</p>
+        <p>v1.4</p>
     </footer>
 
 </body>
