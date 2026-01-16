@@ -109,25 +109,48 @@ if ($db_online) {
 
 /**
  * ============================================================
- * 6. GESTION DU SERVEUR DE FICHIERS (TEST DE CONNEXION)
+ * 6. GESTION DU SERVEUR DE FICHIERS (FIX AUTHENTIFICATION)
  * ============================================================
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
 
+// --- LE FIX MAGIQUE POUR LA DÉMO ---
+// On déconnecte d'abord pour éviter les conflits
+@exec("net use " . $root_path . " /delete /y");
+
+// On force la connexion avec un utilisateur administrateur de la VM File Server
+// ADAPTE 'Administrator' et 'TonMotDePasse' avec les infos de ta VM 192.168.10.19 !
+$user_fs = "Administrator"; 
+$pass_fs = "2opw=-nl5?`^w161";
+// On ajoute des guillemets " " autour du mot de passe pour protéger les caractères spéciaux (^ et ?)
+$cmd_auth = 'net use "' . $root_path . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
+
+// On exécute la commande windows silencieusement
+@exec($cmd_auth); 
+
+// --- FIN DU FIX ---
+
 // 1. Test initial de connexion
 if (is_dir($root_path)) {
     $fs_connected = true;
     
     // 2. Scan des dossiers
-    $contenu = scandir($root_path);
-    foreach ($contenu as $item) {
-        if ($item != "." && $item != ".." && !strpos($item, '$') && 
-            $item != "System Volume Information" && 
-            $item != "RECYCLE.BIN" &&
-            is_dir($root_path . $item)) {
-            $dossiers_detectes[] = $item;
+    // Le @ devant scandir cache l'erreur brute si ça échoue, pour afficher notre propre message
+    $contenu = @scandir($root_path);
+    
+    if ($contenu === false) {
+        $fs_connected = false;
+        $fs_error_details = "Accès refusé (Erreur 5). Vérifiez le mot de passe dans le code PHP.";
+    } else {
+        foreach ($contenu as $item) {
+            if ($item != "." && $item != ".." && !strpos($item, '$') && 
+                $item != "System Volume Information" && 
+                $item != "RECYCLE.BIN" &&
+                is_dir($root_path . $item)) {
+                $dossiers_detectes[] = $item;
+            }
         }
     }
 } else {
