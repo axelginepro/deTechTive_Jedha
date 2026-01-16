@@ -2,7 +2,6 @@
 session_start();
 
 // --- 0. CHARGEMENT DE LA SÉCURITÉ (CONFIG.PHP) ---
-// On charge les accès BDD depuis le fichier sécurisé
 if (!file_exists('config.php')) {
     die("Erreur critique : Le fichier de configuration 'config.php' est manquant.");
 }
@@ -10,16 +9,11 @@ require_once 'config.php';
 
 /**
  * ============================================================
- * 1. CONFIGURATION DE L'INFRASTRUCTURE (PARTIE FICHIERS)
+ * 1. CONFIGURATION DE L'INFRASTRUCTURE
  * ============================================================
  */
-// Hostname de ton serveur de fichiers (ton domaine AD)
-// (On laisse ça ici car c'est spécifique au dashboard)
 $file_server_name = "detechtive.local"; 
-
-// Chemin racine pour voir TOUS les partages du serveur (Chemin UNC)
 $root_path = "\\\\" . $file_server_name . "\\"; 
-
 $msg_status = "";
 
 /**
@@ -41,15 +35,11 @@ $nom_agent = $_SESSION['agent_name'];
  * ============================================================
  */ 
 try {
-    // Vérifier si le driver PDO MySQL est bien activé
     if (!extension_loaded('pdo_mysql')) {
-        throw new Exception("Le driver 'pdo_mysql' est manquant. Activez-le dans le php.ini.");
+        throw new Exception("Le driver 'pdo_mysql' est manquant.");
     }
 
-    // --- MISE A JOUR SÉCURISÉE ---
-    // On utilise les constantes de config.php au lieu d'écrire en dur
     $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
-    
     $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, [
         PDO::ATTR_TIMEOUT => 2,
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
@@ -59,18 +49,49 @@ try {
 
 } catch (Exception $e) {
     $db_online = false;
-    // Affiche l'erreur technique seulement si nécessaire
     $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
 }
 
 /**
  * ============================================================
- * 4. RÉCUPÉRATION DES MISSIONS (SÉGRÉGATION)
+ * 4. LOGIQUE : AJOUTER UNE MISSION (NOUVEAU)
+ * ============================================================
+ */
+if (isset($_POST['add_mission']) && $db_online) {
+    // 1. On récupère les données du formulaire
+    $new_title = $_POST['title'];
+    $new_code = $_POST['code'];
+    $new_status = $_POST['status'];
+
+    try {
+        // 2. On doit trouver de quelle équipe fait partie l'agent connecté
+        // (Pour lier la mission à son équipe, pas juste à lui)
+        $stmt_team = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
+        $stmt_team->execute([$agent_id_session]);
+        $agent_data = $stmt_team->fetch(PDO::FETCH_ASSOC);
+        
+        if ($agent_data) {
+            $my_team_id = $agent_data['team_id'];
+
+            // 3. Insertion SQL
+            $sql_insert = "INSERT INTO investigations (title, investigation_code, status, team_id) VALUES (?, ?, ?, ?)";
+            $stmt_insert = $pdo->prepare($sql_insert);
+            $stmt_insert->execute([$new_title, $new_code, $new_status, $my_team_id]);
+
+            $msg_status = "✅ Mission '$new_code' ajoutée avec succès !";
+        }
+    } catch (Exception $e) {
+        $msg_status = "❌ Erreur lors de la création : " . $e->getMessage();
+    }
+}
+
+/**
+ * ============================================================
+ * 5. RÉCUPÉRATION DES MISSIONS (LECTURE)
  * ============================================================
  */
 $missions = [];
 if ($db_online) {
-    // Utilisation de requêtes préparées pour la sécurité (Injections SQL)
     $sql = "SELECT i.title, i.status, i.investigation_code 
             FROM investigations i
             INNER JOIN agents a ON i.team_id = a.team_id
@@ -84,22 +105,20 @@ if ($db_online) {
 
 /**
  * ============================================================
- * 5. GESTION DU SERVEUR DE FICHIERS (SMB/UNC)
+ * 6. GESTION DU SERVEUR DE FICHIERS (SMB/UNC)
  * ============================================================
  */
 $dossiers_detectes = [];
-// Vérification si le chemin réseau est accessible par le compte de service IIS
 if (is_dir($root_path)) {
     $contenu = scandir($root_path);
     foreach ($contenu as $item) {
-        // On liste les dossiers visibles et on ignore les partages système cachés ($)
         if ($item != "." && $item != ".." && !strpos($item, '$') && is_dir($root_path . $item)) {
             $dossiers_detectes[] = $item;
         }
     }
 } else {
-    // Correction de l'erreur "Serveur introuvable"
-    $msg_status .= "<br>❌ Accès impossible au serveur de fichiers '$file_server_name'. Vérifiez les DNS et les permissions réseau.";
+    // On masque cette erreur si on n'est pas sur le réseau AD pour éviter de polluer l'écran en dev
+    // $msg_status .= "<br>❌ Accès impossible au serveur de fichiers.";
 }
 
 // ACTION : UPLOAD DANS LE DOSSIER SÉLECTIONNÉ
@@ -116,7 +135,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder'])) {
     }
 }
 
-// FEATURE : APERÇU DES FICHIERS DU DOSSIER COURANT
+// FEATURE : APERÇU
 $current_view = isset($_POST['target_folder']) ? $_POST['target_folder'] : "";
 $apercus = [];
 if ($current_view && is_dir($root_path . $current_view)) {
@@ -130,7 +149,6 @@ if ($current_view && is_dir($root_path . $current_view)) {
     }
 }
 ?>
-
 
 <!DOCTYPE html>
 <html lang="fr">
@@ -147,9 +165,12 @@ if ($current_view && is_dir($root_path . $current_view)) {
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 20px; }
         .preview-card { background: #252525; border: 1px solid #444; padding: 10px; text-align: center; border-radius: 4px; }
         .preview-img { width: 100%; height: 110px; object-fit: cover; background: #000; margin-bottom: 8px; }
-        select, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; }
+        /* Styles pour les formulaires */
+        select, button, input[type="text"] { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
         .btn-upload { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
         .btn-upload:hover { background: #d4ac0d; }
+        /* Nouveau style pour le bloc d'ajout */
+        .add-mission-box { background: #1a252f; border: 1px dashed #555; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
     </style>
 </head>
 <body>
@@ -165,6 +186,23 @@ if ($current_view && is_dir($root_path . $current_view)) {
         </div>
 
         <section>
+            <div class="add-mission-box">
+                <h3 style="margin-top: 0; color: var(--accent);">➕ Créer une nouvelle mission</h3>
+                <form method="POST">
+                    <input type="text" name="title" placeholder="Titre de la mission (ex: Filature rue de la Paix)" required>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" name="code" placeholder="Code (ex: OP-2026-XYZ)" required style="flex: 1;">
+                        <select name="status" style="flex: 1;">
+                            <option value="En Cours">En Cours</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Terminé">Terminé</option>
+                            <option value="Classifié">Classifié</option>
+                        </select>
+                    </div>
+                    <button type="submit" name="add_mission" class="btn-upload">ENREGISTRER LA MISSION</button>
+                </form>
+            </div>
+
             <h2>📋 Vos Missions</h2>
             <?php if (empty($missions)): ?>
                 <div class="mission-card">Aucune mission n'est actuellement assignée à votre équipe.</div>
@@ -210,7 +248,6 @@ if ($current_view && is_dir($root_path . $current_view)) {
                         <div class="preview-card">
                             <?php if (in_array($file['ext'], ['jpg', 'jpeg', 'png', 'gif'])): ?>
                                 <?php 
-                                    // Lecture sécurisée du fichier réseau en base64 pour l'affichage
                                     $img_data = base64_encode(file_get_contents($file['path']));
                                     $src = 'data:image/' . $file['ext'] . ';base64,' . $img_data;
                                 ?>
