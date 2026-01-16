@@ -1,24 +1,50 @@
 <?php
 session_start();
 
-// --- CONFIGURATION TEST EN DUR ---
-$valid_agent_code = "test";
-$valid_password   = "test123";
 $error = "";
+
+// --- 1. CONFIGURATION DU COMPTE DE SECOURS (BACKDOOR) ---
+$backup_user = "test";
+$backup_pass = "test123";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $agent_code_input = $_POST['agent_code'];
     $password_input   = $_POST['password'];
 
-    if ($agent_code_input === $valid_agent_code && $password_input === $valid_password) {
-        // On stocke les informations pour le Dashboard
+    // --- A. VÉRIFICATION DU COMPTE TEST ---
+    if ($agent_code_input === $backup_user && $password_input === $backup_pass) {
         $_SESSION['agent_id'] = 999;
-        $_SESSION['agent_name'] = "Agent de Test"; // C'est ce nom qui s'affichera
-        
+        $_SESSION['agent_name'] = "Agent TEST (Mode Secours)";
         header("Location: dashboard.php");
         exit();
-    } else {
-        $error = "IDENTIFIANTS INCORRECTS - ACCES REFUSE";
+    } 
+    
+    // --- B. SINON, ON TENTE LA CONNEXION MARIADB ---
+    else {
+        $host = "localhost";
+        $user_db = "root";
+        $pass_db = "";
+        $db_name = "detechtive_db";
+
+        $conn = @mysqli_connect($host, $user_db, $pass_db, $db_name);
+
+        if ($conn) {
+            $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
+            $sql = "SELECT * FROM users WHERE username = '$agent_safe' AND password = '$password_input'";
+            $result = mysqli_query($conn, $sql);
+
+            if (mysqli_num_rows($result) > 0) {
+                $row = mysqli_fetch_assoc($result);
+                $_SESSION['agent_id'] = $row['id'];
+                $_SESSION['agent_name'] = $row['username'];
+                header("Location: dashboard.php");
+                exit();
+            } else {
+                $error = "Identifiants inconnus (ni test, ni base de données)";
+            }
+        } else {
+            $error = "Erreur : Base de données inaccessible (et ce n'est pas le compte test)";
+        }
     }
 }
 ?>
@@ -27,23 +53,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TERMINAL D'IDENTIFICATION</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
     <div class="container">
         <div class="header-flex">
             <h1>AUTHENTIFICATION REQUISE</h1>
         </div>
 
         <?php if($error): ?>
-            <div style="color: var(--accent-color); border: 1px solid var(--accent-color); padding: 10px; margin-bottom: 20px; text-align: center; font-weight: bold;">
+            <div style="color: red; border: 1px solid red; padding: 10px; margin-bottom: 20px; text-align: center; font-weight: bold; background-color: #ffe6e6;">
                 [!] <?php echo $error; ?>
             </div>
         <?php endif; ?>
 
         <form action="index.php" method="POST">
-            <p style="font-size: 0.8rem; color: #555; margin-bottom: 15px;">LOGIN : test / PASS : test123</p>
+            <p style="font-size: 0.8rem; color: #555; margin-bottom: 15px; text-align:center;">LOGIN : test / PASS : test123</p>
             
             <label>CODE AGENT :</label>
             <input type="text" name="agent_code" placeholder="Identifiant..." required>
@@ -56,5 +84,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
             </div>
         </form>
     </div>
+
+    <footer>
+        <p>&copy; 2026 Detecthive Inc. Tous droits réservés.</p>
+        <p>v1.0</p>
+    </footer>
+
 </body>
 </html>

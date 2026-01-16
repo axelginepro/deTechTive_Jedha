@@ -9,12 +9,13 @@
 body {
     background-color: var(--primary-color);
     color: var(--text-color);
-    font-family: 'Courier New', Courier, monospace; /* Style machine à écrire */
+    font-family: 'Courier New', Courier, monospace;
     margin: 0;
+    
+    /* --- CORRECTION FLEXBOX POUR LE FOOTER --- */
     display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
+    flex-direction: column; /* Important : On empile verticalement */
+    min-height: 100vh;      /* Force la hauteur min à 100% de l'écran */
 }
 
 .container {
@@ -24,6 +25,20 @@ body {
     padding: 30px;
     border-top: 5px solid var(--accent-color);
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    
+    /* --- CENTRAGE DE LA CARTE --- */
+    margin: auto; /* L'astuce magique : centre la carte et laisse de la place au footer */
+}
+
+/* --- AJOUT DU STYLE DU FOOTER --- */
+footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 0.8rem;
+    color: #666;
+    width: 100%;
+    background-color: #000; /* Fond noir pour bien le séparer */
+    box-sizing: border-box; /* Pour éviter que le padding n'élargisse la page */
 }
 
 h1, h2 {
@@ -34,13 +49,15 @@ h1, h2 {
 }
 
 /* Formulaires */
-input[type="text"], input[type="password"], textarea, file {
+/* J'ai corrigé 'file' en 'input[type="file"]' car 'file' tout seul ne marche pas en CSS */
+input[type="text"], input[type="password"], textarea, input[type="file"] {
     width: 100%;
     padding: 12px;
     margin: 10px 0;
     background: #222;
     border: 1px solid var(--border-color);
     color: white;
+    box-sizing: border-box; /* Empêche les champs de dépasser du cadre */
 }
 
 button {
@@ -51,6 +68,7 @@ button {
     font-weight: bold;
     cursor: pointer;
     text-transform: uppercase;
+    transition: background 0.3s; /* Animation douce au survol */
 }
 
 button:hover {
