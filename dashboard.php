@@ -51,13 +51,13 @@ if ($db_online) {
 }
 
 /**
- * 4. LOGIQUE : AJOUTER MISSION (MODIFIÉ)
+ * 4. LOGIQUE : AJOUTER MISSION
  */
 if (isset($_POST['add_mission']) && $db_online) {
     $new_title = $_POST['title'];
     $new_code = $_POST['code'];
     $new_status = $_POST['status'];
-    $new_desc = $_POST['description']; // NOUVEAU
+    $new_desc = $_POST['description']; 
 
     try {
         $stmt_team = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
@@ -66,7 +66,6 @@ if (isset($_POST['add_mission']) && $db_online) {
         
         if ($agent_data) {
             $my_team_id = $agent_data['team_id'];
-            // Ajout de la description dans l'INSERT
             $sql_insert = "INSERT INTO investigations (title, investigation_code, status, description, team_id) VALUES (?, ?, ?, ?, ?)";
             $stmt_insert = $pdo->prepare($sql_insert);
             $stmt_insert->execute([$new_title, $new_code, $new_status, $new_desc, $my_team_id]);
@@ -81,11 +80,10 @@ if (isset($_POST['add_mission']) && $db_online) {
 }
 
 /**
- * 5. RÉCUPÉRATION MISSIONS (MODIFIÉ)
+ * 5. RÉCUPÉRATION MISSIONS
  */
 $missions = [];
 if ($db_online) {
-    // Ajout de description et creation_date dans le SELECT
     $sql = "SELECT i.title, i.status, i.investigation_code, i.description, i.creation_date 
             FROM investigations i
             INNER JOIN agents a ON i.team_id = a.team_id
@@ -97,7 +95,7 @@ if ($db_online) {
 }
 
 /**
- * 6. GESTION FICHIERS (CODE FIXÉ)
+ * 6. GESTION FICHIERS
  */
 $dossiers_detectes = [];
 $apercus = [];
@@ -159,7 +157,6 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         .alert { padding: 15px; border-radius: 5px; margin-bottom: 25px; border: 1px solid #555; background: #34495e; }
         .header-flex { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
         
-        /* CARTE MISSION REVAMPED */
         .mission-card { background: var(--card); padding: 20px; border-left: 5px solid var(--accent); margin-bottom: 15px; border-radius: 4px; }
         .mission-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
         .mission-title { font-size: 1.2rem; font-weight: bold; color: #fff; margin: 0; }
@@ -167,17 +164,47 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         .mission-desc { background: #252525; padding: 10px; border-radius: 4px; font-size: 0.95rem; color: #ccc; margin-top: 10px; border: 1px solid #333; }
         .badge { padding: 5px 10px; border-radius: 3px; font-size: 0.75rem; background: #27ae60; color: white; font-weight: bold; }
 
-        /* FORMULAIRES */
-        .add-mission-box { background: #1a252f; border: 1px dashed #555; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
         input, select, textarea, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
         textarea { height: 80px; resize: vertical; font-family: inherit; }
-        .btn-upload { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; }
-        .btn-upload:hover { background: #d4ac0d; }
+        .btn-action { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; display: inline-block; text-align: center; padding: 12px 20px; border-radius: 4px; font-size: 1rem; }
+        .btn-action:hover { background: #d4ac0d; }
 
-        /* IMAGES */
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
         .preview-card { background: #252525; border: 1px solid #444; padding: 10px; text-align: center; border-radius: 4px; }
         .preview-img { width: 100%; height: 110px; object-fit: cover; background: #000; border-radius: 3px; }
+
+        /* --- STYLES DU POPUP (MODAL) --- */
+        .modal {
+            display: none; /* Caché par défaut */
+            position: fixed; 
+            z-index: 1000; 
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+            background-color: rgba(0,0,0,0.8); /* Fond noir semi-transparent */
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: #1a252f;
+            margin: 5% auto; /* 5% du haut, centré */
+            padding: 25px;
+            border: 1px solid var(--accent);
+            width: 90%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            animation: slideDown 0.3s;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover { color: #fff; }
+        @keyframes slideDown { from {transform: translateY(-50px); opacity: 0;} to {transform: translateY(0); opacity: 1;} }
     </style>
 </head>
 <body>
@@ -191,34 +218,43 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <h1 style="margin: 0;">Agent : <?php echo htmlspecialchars($nom_agent); ?></h1>
                 <small style="color: #aaa;">📧 Contact : <span style="color: #fff; font-family: monospace;"><?php echo htmlspecialchars($agent_contact); ?></span></small>
             </div>
-            <a href="index.php" style="color: #e74c3c; text-decoration: none; font-weight: bold;">[ DÉCONNEXION ]</a>
+            <div>
+                <button id="openModalBtn" class="btn-action" style="margin-right: 10px;">➕ Nouvelle Mission</button>
+                <a href="index.php" style="color: #e74c3c; text-decoration: none; font-weight: bold;">[ DÉCONNEXION ]</a>
+            </div>
         </div>
 
-        <div class="add-mission-box">
-            <h3 style="margin-top: 0; color: var(--accent);">➕ Nouvelle Mission</h3>
-            <form method="POST">
-                <input type="text" name="title" placeholder="Titre de la mission (ex: Filature rue de la Paix)" required>
-                
-                <div style="display: flex; gap: 10px;">
-                    <input type="text" name="code" placeholder="Code (ex: OP-2026-XYZ)" required style="flex: 1;">
-                    <select name="status" style="flex: 1;">
-                        <option value="En Cours">En Cours</option>
-                        <option value="Urgent">Urgent</option>
-                        <option value="Terminé">Terminé</option>
-                        <option value="Classifié">Classifié</option>
-                    </select>
-                </div>
+        <div id="missionModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3 style="margin-top: 0; color: var(--accent); text-align: center;">➕ Créer une nouvelle mission</h3>
+                <form method="POST">
+                    <label>Titre</label>
+                    <input type="text" name="title" placeholder="Ex: Filature rue de la Paix" required>
+                    
+                    <label>Code & Statut</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" name="code" placeholder="Ex: OP-2026-XYZ" required style="flex: 1;">
+                        <select name="status" style="flex: 1;">
+                            <option value="En Cours">En Cours</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Terminé">Terminé</option>
+                            <option value="Classifié">Classifié</option>
+                        </select>
+                    </div>
 
-                <textarea name="description" placeholder="Description détaillée de la mission, objectifs, suspects..."></textarea>
-                
-                <button type="submit" name="add_mission" class="btn-upload">ENREGISTRER LA MISSION</button>
-            </form>
+                    <label>Description</label>
+                    <textarea name="description" placeholder="Objectifs, suspects, notes..."></textarea>
+                    
+                    <button type="submit" name="add_mission" class="btn-action">ENREGISTRER</button>
+                </form>
+            </div>
         </div>
 
         <section>
-            <h2>📋 Rapports de Missions</h2>
+            <h2 style="border-bottom: 2px solid #333; padding-bottom: 10px;">📋 Rapports de Missions</h2>
             <?php if (empty($missions)): ?>
-                <div class="mission-card">Aucune mission assignée.</div>
+                <div class="mission-card">Aucune mission assignée. Cliquez sur "Nouvelle Mission" pour commencer.</div>
             <?php else: ?>
                 <?php foreach($missions as $m): ?>
                 <div class="mission-card">
@@ -226,17 +262,14 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                         <div>
                             <div class="mission-title"><?php echo htmlspecialchars($m['title']); ?></div>
                             <div class="mission-meta">
-                                🆔 Code : <?php echo htmlspecialchars($m['investigation_code']); ?> &nbsp;|&nbsp; 
-                                📅 Créé le : <?php echo date("d/m/Y à H:i", strtotime($m['creation_date'])); ?>
+                                🆔 <?php echo htmlspecialchars($m['investigation_code']); ?> &nbsp;|&nbsp; 
+                                📅 <?php echo date("d/m/Y H:i", strtotime($m['creation_date'])); ?>
                             </div>
                         </div>
                         <span class="badge"><?php echo htmlspecialchars($m['status']); ?></span>
                     </div>
-                    
                     <?php if (!empty($m['description'])): ?>
-                        <div class="mission-desc">
-                            <?php echo nl2br(htmlspecialchars($m['description'])); ?>
-                        </div>
+                        <div class="mission-desc"><?php echo nl2br(htmlspecialchars($m['description'])); ?></div>
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
@@ -261,8 +294,10 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                         <?php endforeach; ?>
                     </select>
                     <?php if ($current_view): ?>
-                        <input type="file" name="evidence" required>
-                        <button type="submit" class="btn-upload">TÉLÉVERSER</button>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="file" name="evidence" required style="margin-bottom:0;">
+                            <button type="submit" class="btn-action" style="width: auto; margin-bottom:0;">Envoyer</button>
+                        </div>
                     <?php endif; ?>
                 </form>
 
@@ -291,5 +326,29 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
             <?php endif; ?> 
         </section>
     </div>
+
+    <script>
+        // Récupération des éléments
+        var modal = document.getElementById("missionModal");
+        var btn = document.getElementById("openModalBtn");
+        var span = document.getElementsByClassName("close")[0];
+
+        // Ouvrir le popup au clic sur le bouton
+        btn.onclick = function() {
+            modal.style.display = "block";
+        }
+
+        // Fermer le popup au clic sur la croix (X)
+        span.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        // Fermer le popup si on clique en dehors de la fenêtre
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+    </script>
 </body>
 </html>
