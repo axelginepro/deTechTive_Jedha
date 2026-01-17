@@ -7,9 +7,14 @@ require_once 'config.php';
 
 /**
  * 1. CONFIG INFRASTRUCTURE
+ * Correction ici : On vise le dossier racine visible sur ta capture
  */
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
-$share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "resources";
+
+// D'après ta capture, le dossier racine semble être "Detechtive"
+// Si tu as partagé "resources" séparément, remets "resources" ici.
+$share_name = "Detechtive"; 
+
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
 $msg_status = "";
 $fs_connected = false;
@@ -95,43 +100,65 @@ if ($db_online) {
 }
 
 /**
- * 6. GESTION FICHIERS
+ * 6. GESTION FICHIERS (CORRECTIF DE CONNEXION)
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
+$debug_output = []; // Pour voir ce que Windows répond
 
+// Nettoyage préventif
 @exec("net use " . $root_path . " /delete /y");
+
 $user_fs = "Administrator"; 
-$pass_fs = "2opw=-nl5?`^w161";
+// UTILISATION DE SIMPLES QUOTES pour que PHP ne touche pas au ^
+$pass_fs = '2opw=-nl5?^w161'; 
+
+// On échappe les arguments pour que le CMD windows ne plante pas sur le ^
 $cmd_auth = 'net use "' . $root_path . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
-@exec($cmd_auth); 
+
+// On capture la sortie (output) pour le debug
+exec($cmd_auth . " 2>&1", $debug_output, $return_var); 
 
 if (is_dir($root_path)) {
     $fs_connected = true;
+    
+    // Scan du dossier racine
     $contenu = @scandir($root_path);
+    
+    // Si on trouve "resources" dans la liste, on rentre dedans automatiquement si tu veux
+    // Sinon on liste tout ce qu'il y a dans "Detechtive"
     if ($contenu) {
         foreach ($contenu as $item) {
-            if ($item != "." && $item != ".." && !strpos($item, '$') && $item != "System Volume Information" && $item != "RECYCLE.BIN" && is_dir($root_path . $item)) {
+            if ($item != "." && $item != ".." && !strpos($item, '$') && 
+                $item != "System Volume Information" && 
+                $item != "RECYCLE.BIN" && 
+                is_dir($root_path . $item)) {
                 $dossiers_detectes[] = $item;
             }
         }
     }
 } else {
     $fs_connected = false;
-    $fs_error_details = "Impossible d'atteindre le chemin.";
+    // On affiche la réponse de Windows pour comprendre l'erreur
+    $windows_msg = implode(" ", $debug_output);
+    $fs_error_details = "Erreur Windows : " . $windows_msg;
 }
 
+// LOGIQUE UPLOAD
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
     $folder_selected = str_replace(['/', '\\', '..'], '', $_POST['target_folder']);
+    // On construit le chemin complet
     $dest = $root_path . $folder_selected . "\\" . basename($_FILES["evidence"]["name"]);
+    
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $dest)) {
         $msg_status = "✅ Preuve déposée dans : " . $folder_selected;
     } else {
-        $msg_status = "❌ Échec upload.";
+        $msg_status = "❌ Échec upload (Vérifier droits d'écriture sur le dossier).";
     }
 }
 
+// LOGIQUE APERÇU
 $current_view = isset($_POST['target_folder']) ? str_replace(['/', '\\', '..'], '', $_POST['target_folder']) : "";
 if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
     $files = scandir($root_path . $current_view);
@@ -321,7 +348,9 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <?php endif; ?>
             <?php else: ?>
                 <div style="padding: 10px; background: rgba(192, 57, 43, 0.3); border: 1px solid #c0392b; color: #e74c3c; text-align: center;">
-                    ❌ SERVEUR INACCESSIBLE
+                    ❌ SERVEUR INACCESSIBLE <br>
+                    <small>Chemin tenté : <?php echo $root_path; ?></small><br>
+                    <small>Réponse Windows : <strong><?php echo htmlspecialchars($fs_error_details); ?></strong></small>
                 </div>
             <?php endif; ?> 
         </section>
