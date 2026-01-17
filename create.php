@@ -12,30 +12,28 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     // Récupération des données
     $username = trim($_POST['username']);
-    $raw_pass = $_POST['password']; // Le mot de passe en clair (ex: "azerty")
+    $raw_pass = $_POST['password']; 
     $realname = trim($_POST['agent_name']);
     $contact  = trim($_POST['contact']);
     $team_id  = (int)$_POST['team_id'];
 
     if (!empty($username) && !empty($raw_pass)) {
         
-        // Connexion
         $conn = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
         if (!$conn) { die("Erreur SQL : " . mysqli_connect_error()); }
 
-        // --- A. HASHER LE MOT DE PASSE ---
-        // C'est ici que PHP transforme "azerty" en "$2y$10$..." automatiquement
+        // --- HASHER LE MOT DE PASSE ---
         $hashed_password = password_hash($raw_pass, PASSWORD_DEFAULT);
 
-        // --- B. INSÉRER DIRECTEMENT DANS LA TABLE AGENTS ---
-        // On utilise une requête préparée pour éviter les soucis de guillemets
+        // --- INSÉRER DANS LA TABLE AGENTS ---
         $sql = "INSERT INTO agents (username, password, agent_name, team_id, contact) VALUES (?, ?, ?, ?, ?)";
         
         if ($stmt = mysqli_prepare($conn, $sql)) {
-            mysqli_stmt_bind_param($stmt, "sssjs", $username, $hashed_password, $realname, $team_id, $contact);
+            // CORRECTION ICI : "sssis" (String, String, String, Integer, String)
+            mysqli_stmt_bind_param($stmt, "sssis", $username, $hashed_password, $realname, $team_id, $contact);
             
             if (mysqli_stmt_execute($stmt)) {
-                $message = "<div class='success'>✅ SUCCÈS : L'agent <strong>$username</strong> a été créé et inséré en BDD !</div>";
+                $message = "<div class='success'>✅ SUCCÈS : L'agent <strong>$username</strong> a été créé !</div>";
             } else {
                 $message = "<div class='error'>❌ ERREUR SQL : " . mysqli_error($conn) . "</div>";
             }
@@ -78,22 +76,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <?php echo $message; ?>
 
         <form method="POST">
-            <label>Identifiant (Username de connexion)</label>
+            <label>Identifiant (Username)</label>
             <input type="text" name="username" placeholder="ex: jbond" required>
 
-            <label>Mot de passe (Sera hashé automatiquement)</label>
+            <label>Mot de passe</label>
             <input type="text" name="password" placeholder="ex: 007Secret" required>
 
-            <label>Nom complet de l'agent</label>
+            <label>Nom complet</label>
             <input type="text" name="agent_name" placeholder="ex: James Bond">
 
-            <label>Contact (Email/Tel)</label>
+            <label>Contact (Email)</label>
             <input type="text" name="contact" placeholder="ex: 007@mi6.uk">
 
             <label>ID Équipe (Team ID)</label>
             <input type="number" name="team_id" value="1">
 
-            <button type="submit">CRÉER L'AGENT DANS LA BDD</button>
+            <button type="submit">CRÉER L'AGENT</button>
         </form>
 
         <a href="index.php" class="back-link">← Retour au login</a>
