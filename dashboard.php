@@ -9,9 +9,10 @@ require_once 'config.php';
  * 1. CONFIG INFRASTRUCTURE
  */
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
-$share_name = "Detechtive"; // Racine du partage
+$share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "Detechtive";
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
 $msg_status = "";
+$msg_type = ""; // Pour gérer la couleur (rouge/vert)
 $fs_connected = false;
 
 /**
@@ -23,6 +24,7 @@ $nom_agent = $_SESSION['agent_name'];
 
 if (isset($_SESSION['flash_message'])) {
     $msg_status = $_SESSION['flash_message'];
+    $msg_type = "success";
     unset($_SESSION['flash_message']); 
 }
 
@@ -37,6 +39,7 @@ try {
 } catch (Exception $e) {
     $db_online = false;
     $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
+    $msg_type = "error";
 }
 
 // --- INFO CONTACT AGENT ---
@@ -66,7 +69,10 @@ if (isset($_POST['add_mission']) && $db_online) {
             $_SESSION['flash_message'] = "✅ Mission '$new_code' créée !";
             header("Location: dashboard.php"); exit(); 
         }
-    } catch (Exception $e) { $msg_status = "❌ Erreur création : " . $e->getMessage(); }
+    } catch (Exception $e) { 
+        $msg_status = "❌ Erreur création : " . $e->getMessage();
+        $msg_type = "error";
+    }
 }
 
 /**
@@ -74,26 +80,34 @@ if (isset($_POST['add_mission']) && $db_online) {
  */
 $missions = [];
 if ($db_online) {
-    // On sélectionne bien la creation_date
     $stmt = $pdo->prepare("SELECT i.* FROM investigations i JOIN agents a ON i.team_id = a.team_id WHERE a.id = ? ORDER BY i.creation_date DESC");
     $stmt->execute([$agent_id_session]);
     $missions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /**
- * 6. GESTION FICHIERS (CORRECTIF AUTHENTIFICATION)
+ * 6. GESTION FICHIERS (CENTRALISÉE CONFIG.PHP)
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
+$debug_msg = "";
 
-// --- AUTHENTIFICATION WINDOWS ---
-@exec("net use " . $root_path . " /delete /y");
-$user_fs = "Administrator"; 
-$pass_fs = '2opw=-nl5?^w161'; // Simples quotes pour protéger le ^
-$cmd_auth = 'net use "' . $root_path . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
-@exec($cmd_auth); 
+$user_fs = defined('FS_USER') ? FS_USER : "Administrator";
+$pass_fs = defined('FS_PASS') ? FS_PASS : "";
 
+// Nettoyage et Connexion
+@exec("net use * /delete /y");
+$share_root_cmd = "\\\\" . $file_server_name . "\\" . $share_name; 
+$cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
+
+$output = [];
+$return_var = 0;
+exec($cmd_auth . " 2>&1", $output, $return_var); 
+
+if ($return_var !== 0) { $debug_msg = implode(" / ", $output); }
+
+// Navigation
 if (is_dir($root_path)) {
     $fs_connected = true;
     $contenu = @scandir($root_path);
@@ -108,21 +122,23 @@ if (is_dir($root_path)) {
     }
 } else {
     $fs_connected = false;
-    $fs_error_details = "Impossible d'accéder au partage.";
+    $fs_error_details = "Accès refusé. Debug : " . $debug_msg;
 }
 
-// UPLOAD
+// Upload
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
     $folder_selected = str_replace(['/', '\\', '..'], '', $_POST['target_folder']);
     $dest = $root_path . $folder_selected . "\\" . basename($_FILES["evidence"]["name"]);
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $dest)) {
         $msg_status = "✅ Fichier transféré vers : " . $folder_selected;
+        $msg_type = "success";
     } else {
-        $msg_status = "❌ Erreur d'écriture (Droits NTFS ?).";
+        $msg_status = "❌ Erreur d'écriture (Droits AD insuffisants ?).";
+        $msg_type = "error";
     }
 }
 
-// GALERIE
+// Galerie
 $current_view = isset($_POST['target_folder']) ? str_replace(['/', '\\', '..'], '', $_POST['target_folder']) : "";
 if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
     $files = scandir($root_path . $current_view);
@@ -141,111 +157,140 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
 <head>
     <meta charset="UTF-8">
     <title>Detechtive Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+
     <style>
-        :root { --accent: #f1c40f; --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; }
-        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; padding: 20px; }
-        .container { max-width: 900px; margin: auto; }
-        .alert { padding: 15px; border-radius: 5px; margin-bottom: 25px; border: 1px solid #555; background: #34495e; }
-        .header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+        /* --- Styles spécifiques héritant de tes variables --- */
         
-        .mission-card { background: var(--card); padding: 20px; border-left: 5px solid var(--accent); margin-bottom: 15px; border-radius: 4px; }
-        .mission-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        .badge { padding: 5px 10px; border-radius: 3px; font-size: 0.75rem; background: #27ae60; color: white; font-weight: bold; }
+        /* Modal (Fenêtre Pop-up) */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(2px); }
+        .modal-content { 
+            background-color: var(--card-bg); 
+            margin: 5% auto; 
+            padding: 25px; 
+            border: 1px solid var(--accent-color); 
+            width: 90%; max-width: 500px; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.7);
+        }
+        .close { float: right; font-size: 28px; cursor: pointer; color: var(--text-color); }
+        .close:hover { color: var(--accent-color); }
+
+        /* Status File Server */
+        .fs-status-ok { padding:10px; border:1px solid #2ecc71; color:#2ecc71; background:rgba(46, 204, 113, 0.1); text-align:center; margin-bottom:15px; }
+        .fs-status-ko { padding:10px; border:1px solid var(--error-color); color:var(--error-color); background:rgba(231, 76, 60, 0.1); text-align:center; margin-bottom:15px; }
+
+        /* Galerie Grid */
+        .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; margin-top: 20px; }
+        .preview-card { 
+            background: #222; 
+            border: 1px solid var(--border-color); 
+            padding: 5px; text-align: center; 
+            cursor: pointer; transition: 0.2s; 
+        }
+        .preview-card:hover { border-color: var(--accent-color); transform: translateY(-2px); }
+        .preview-img { width: 100%; height: 100px; object-fit: cover; background: #000; display: block; margin-bottom: 5px; }
+        .file-name { font-size: 0.7rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Lightbox (Zoom) */
+        .lightbox { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); justify-content: center; align-items: center; }
+        .lightbox img { max-width: 90%; max-height: 90%; border: 2px solid var(--accent-color); box-shadow: 0 0 30px var(--accent-color); }
         
-        input, select, textarea, button { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
-        .btn-action { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; }
-        .btn-action:hover { background: #d4ac0d; }
-
-        /* GALERIE */
-        .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin-top: 20px; }
-        .preview-card { background: #252525; border: 1px solid #444; padding: 5px; text-align: center; border-radius: 4px; transition: transform 0.2s; cursor: pointer; }
-        .preview-card:hover { transform: scale(1.05); border-color: var(--accent); }
-        .preview-img { width: 100%; height: 120px; object-fit: cover; background: #000; border-radius: 3px; display: block; }
-        .file-name { font-size: 0.7rem; color: #aaa; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; }
-
-        /* LIGHTBOX */
-        .lightbox { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); justify-content: center; align-items: center; }
-        .lightbox img { max-width: 90%; max-height: 90%; border: 2px solid var(--accent); box-shadow: 0 0 20px rgba(241, 196, 15, 0.5); }
-        .lightbox:target { display: flex; }
-
-        /* MODAL */
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
-        .modal-content { background-color: #1a252f; margin: 10% auto; padding: 25px; border: 1px solid var(--accent); width: 90%; max-width: 500px; border-radius: 8px; }
-        .close { float: right; font-size: 28px; cursor: pointer; color: #aaa; }
+        /* Alert Success (car ton CSS n'a que alert-error) */
+        .alert-success {
+            background-color: rgba(46, 204, 113, 0.15);
+            border: 1px solid #2ecc71; border-left: 5px solid #2ecc71;
+            color: #2ecc71; padding: 15px; margin-bottom: 25px;
+        }
     </style>
 </head>
 <body>
+
     <div class="container">
         <?php if($msg_status): ?>
-            <div class="alert"><?php echo $msg_status; ?></div>
+            <div class="<?php echo ($msg_type === 'error') ? 'alert-error' : 'alert-success'; ?>">
+                <?php echo $msg_status; ?>
+            </div>
         <?php endif; ?>
 
         <div class="header-flex">
             <div>
-                <h1 style="margin: 0;">Agent : <?php echo htmlspecialchars($nom_agent); ?></h1>
-                <small>Contact : <?php echo htmlspecialchars($agent_contact); ?></small>
+                <h1 style="margin: 0; border:none;">AGENT: <?php echo htmlspecialchars($nom_agent); ?></h1>
+                <small style="color: #666; font-family: 'Courier New';">CONTACT: <?php echo htmlspecialchars($agent_contact); ?></small>
             </div>
             <div>
-                <button id="openModalBtn" class="btn-action" style="width:auto; margin-right:10px;">➕ Mission</button>
-                <a href="index.php" style="color: #e74c3c; font-weight: bold; text-decoration: none;">[ DÉCO ]</a>
+                <button id="openModalBtn" style="margin-right:10px;">[ + MISSION ]</button>
+                <a href="index.php" style="color: var(--error-color); font-weight: bold; text-decoration: none;">[ DÉCO ]</a>
             </div>
         </div>
+
+        <hr style="border-color: var(--border-color); margin-bottom: 30px;">
 
         <div id="missionModal" class="modal">
             <div class="modal-content">
                 <span class="close">&times;</span>
-                <h3 style="color: var(--accent); text-align: center;">Nouvelle Mission</h3>
+                <h2 style="color: var(--accent-color); text-align: center; border:none;">NOUVELLE MISSION</h2>
                 <form method="POST">
-                    <input type="text" name="title" placeholder="Titre" required>
-                    <div style="display:flex; gap:10px;">
-                        <input type="text" name="code" placeholder="Code" required style="flex:1;">
-                        <select name="status" style="flex:1;">
-                            <option>En Cours</option><option>Urgent</option><option>Terminé</option>
-                        </select>
+                    <label>TITRE</label>
+                    <input type="text" name="title" required>
+                    
+                    <div style="display:flex; gap:15px;">
+                        <div style="flex:1;">
+                            <label>CODE</label>
+                            <input type="text" name="code" required>
+                        </div>
+                        <div style="flex:1;">
+                            <label>STATUT</label>
+                            <select name="status" style="width:100%; padding:12px; margin:10px 0; background:#222; border:1px solid var(--border-color); color:white;">
+                                <option>En Cours</option><option>Urgent</option><option>Terminé</option>
+                            </select>
+                        </div>
                     </div>
-                    <textarea name="description" placeholder="Description..." style="height:80px;"></textarea>
-                    <button type="submit" name="add_mission" class="btn-action">Créer</button>
+                    
+                    <label>DESCRIPTION</label>
+                    <textarea name="description" style="height:80px;"></textarea>
+                    
+                    <button type="submit" name="add_mission" style="width:100%; margin-top:10px;">ENREGISTRER</button>
                 </form>
             </div>
         </div>
 
         <section>
-            <h2>📋 Rapports</h2>
+            <h2>RAPPORTS DE MISSION</h2>
             <?php if (empty($missions)): ?>
-                <div class="mission-card">Aucune mission.</div>
+                <div class="mission-card" style="justify-content:center; color:#666;">AUCUNE DONNÉE DISPONIBLE.</div>
             <?php else: ?>
                 <?php foreach($missions as $m): ?>
                 <div class="mission-card">
-                    <div class="mission-header">
-                        <div>
-                            <strong><?php echo htmlspecialchars($m['title']); ?></strong>
-                            
-                            <div style="font-size:0.8rem; color:#888; margin-top:4px;">
-                                🆔 <?php echo htmlspecialchars($m['investigation_code']); ?> &nbsp;|&nbsp; 
-                                📅 <?php echo date("d/m/Y", strtotime($m['creation_date'])); ?>
-                            </div>
+                    <div style="flex:1;">
+                        <strong style="font-size:1.1rem; color:white;"><?php echo htmlspecialchars($m['title']); ?></strong>
+                        <div style="font-size:0.8rem; color:#666; margin-top:5px;">
+                            ID: <?php echo htmlspecialchars($m['investigation_code']); ?> | 
+                            DATE: <?php echo date("d/m/Y", strtotime($m['creation_date'])); ?>
                         </div>
-                        <span class="badge"><?php echo htmlspecialchars($m['status']); ?></span>
+                        <div style="margin-top:10px; font-size:0.9rem; color:#bbb;">
+                            <?php echo nl2br(htmlspecialchars($m['description'])); ?>
+                        </div>
                     </div>
-                    <div style="color:#ccc; font-size:0.9rem; margin-top:8px;"><?php echo nl2br(htmlspecialchars($m['description'])); ?></div>
+                    <div class="status-badge"><?php echo htmlspecialchars($m['status']); ?></div>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
         </section>
 
-        <hr style="border-color:#333; margin:40px 0;">
+        <br><br>
 
         <section>
-            <h2>📁 Preuves Numériques (File Server)</h2>
+            <h2>COFFRE-FORT NUMÉRIQUE</h2>
+            
             <?php if ($fs_connected): ?>
-                <div style="padding:10px; background:rgba(39, 174, 96, 0.3); border:1px solid #27ae60; text-align:center; margin-bottom:15px; color:#2ecc71;">
-                    ✅ CONNECTÉ : <?php echo htmlspecialchars($share_name); ?>
+                <div class="fs-status-ok">
+                    CONNEXION ÉTABLIE : <?php echo htmlspecialchars($share_name); ?>
                 </div>
                 
-                <form method="POST" enctype="multipart/form-data" style="background:#252525; padding:15px; border-radius:5px;">
-                    <div style="display:flex; gap:10px;">
-                        <select name="target_folder" onchange="this.form.submit()" required style="margin:0;">
-                            <option value="">-- Choisir un dossier --</option>
+                <form method="POST" enctype="multipart/form-data" style="background:#111; padding:20px; border:1px solid var(--border-color);">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <select name="target_folder" onchange="this.form.submit()" required style="flex:1; padding:12px; background:#222; border:1px solid var(--border-color); color:white;">
+                            <option value="">-- SÉLECTIONNER UN DOSSIER --</option>
                             <?php foreach($dossiers_detectes as $folder): ?>
                                 <option value="<?php echo htmlspecialchars($folder); ?>" <?php echo ($current_view == $folder) ? 'selected' : ''; ?>>
                                     📂 <?php echo htmlspecialchars($folder); ?>
@@ -253,14 +298,14 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                             <?php endforeach; ?>
                         </select>
                         <?php if ($current_view): ?>
-                            <input type="file" name="evidence" style="margin:0;">
-                            <button type="submit" class="btn-action" style="width:auto; margin:0;">Uploader</button>
+                            <input type="file" name="evidence" style="flex:1; margin:0;">
+                            <button type="submit" style="margin:0;">UPLOAD</button>
                         <?php endif; ?>
                     </div>
                 </form>
 
                 <?php if ($current_view && !empty($apercus)): ?>
-                    <h3 style="margin-top:20px; border-bottom:1px solid #444; padding-bottom:5px;">Contenu de : <?php echo htmlspecialchars($current_view); ?></h3>
+                    <h3 style="margin-top:20px; font-size:1rem; color:var(--accent-color);">CONTENU : <?php echo htmlspecialchars($current_view); ?></h3>
                     <div class="preview-grid">
                         <?php foreach ($apercus as $file): ?>
                             <?php 
@@ -268,18 +313,16 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                                 $src = "";
                                 if ($is_img) {
                                     $content = @file_get_contents($file['path']);
-                                    if ($content) {
-                                        $src = 'data:image/'.$file['ext'].';base64,'.base64_encode($content);
-                                    }
+                                    if ($content) $src = 'data:image/'.$file['ext'].';base64,'.base64_encode($content);
                                 }
                             ?>
                             <div class="preview-card" onclick="<?php echo ($is_img && $src) ? "openLightbox('$src')" : ""; ?>">
                                 <?php if ($is_img && $src): ?>
                                     <img src="<?php echo $src; ?>" class="preview-img">
-                                <?php elseif ($is_img && !$src): ?>
-                                    <div style="height:120px; display:flex; align-items:center; justify-content:center; color:#e74c3c;">🔒</div>
+                                <?php elseif ($is_img): ?>
+                                    <div style="height:100px; display:flex; align-items:center; justify-content:center; color:var(--error-color);">🔒</div>
                                 <?php else: ?>
-                                    <div style="height:120px; display:flex; align-items:center; justify-content:center; font-size:3rem;">📄</div>
+                                    <div style="height:100px; display:flex; align-items:center; justify-content:center; font-size:2rem;">📄</div>
                                 <?php endif; ?>
                                 <div class="file-name"><?php echo htmlspecialchars($file['name']); ?></div>
                             </div>
@@ -288,25 +331,28 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <?php endif; ?>
 
             <?php else: ?>
-                <div style="padding:10px; background:rgba(192, 57, 43, 0.3); border:1px solid #c0392b; text-align:center; color:#e74c3c;">
-                    ❌ SERVEUR NON DISPONIBLE
+                <div class="fs-status-ko">
+                    CONNEXION ÉCHOUÉE (SERVEUR INACCESSIBLE)
                 </div>
             <?php endif; ?>
         </section>
     </div>
+
+    <footer>
+        &copy; 2026 DETECHTIVE AGENCY - SECURE TERMINAL V2.0<br>
+        AUTHORIZED ACCESS ONLY
+    </footer>
 
     <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
         <img id="lightbox-img" src="">
     </div>
 
     <script>
-        // Gestion Modal Mission
         var modal = document.getElementById("missionModal");
         document.getElementById("openModalBtn").onclick = function() { modal.style.display = "block"; }
         document.getElementsByClassName("close")[0].onclick = function() { modal.style.display = "none"; }
         window.onclick = function(e) { if(e.target == modal) modal.style.display = "none"; }
 
-        // Gestion Lightbox
         function openLightbox(src) {
             document.getElementById('lightbox-img').src = src;
             document.getElementById('lightbox').style.display = 'flex';
