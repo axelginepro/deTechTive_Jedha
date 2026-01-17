@@ -14,4 +14,5 @@ define('FS_SHARE_NAME', 'Detechtive');
 // Identifiants Active Directory pour le script PHP
 define('FS_USER', 'DETECHTIVE\\Administrator'); 
 define('FS_PASS', 'abricotbateauextravagantbatonchat'); 
+// flag={Bienjoué!!}
 ?>

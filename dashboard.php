@@ -94,14 +94,12 @@ $fs_error_details = "";
 $debug_msg = "";
 
 // A. Récupération du Team ID
-$my_team_path_relative = ""; // Chemin relatif (ex: investigations\Team_1)
+$my_team_path_relative = ""; 
 if ($db_online) {
     $stmt = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
     $stmt->execute([$agent_id_session]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
     if ($res) {
-        // --- C'EST ICI QUE ÇA CHANGE ---
-        // On construit le chemin : investigations \ Team_ID
         $my_team_path_relative = "investigations\\Team_" . $res['team_id'];
     }
 }
@@ -109,7 +107,7 @@ if ($db_online) {
 $user_fs = defined('FS_USER') ? FS_USER : "Administrator";
 $pass_fs = defined('FS_PASS') ? FS_PASS : "";
 
-// Nettoyage et Connexion à la racine (Detechtive)
+// Nettoyage et Connexion à la racine
 @exec("net use * /delete /y");
 $share_root_cmd = "\\\\" . $file_server_name . "\\" . $share_name; 
 $cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
@@ -121,15 +119,11 @@ if ($return_var !== 0) { $debug_msg = implode(" / ", $output); }
 
 // Navigation Intelligente
 if (is_dir($root_path)) {
-    // Si on a une équipe, on vérifie si son dossier existe
     if ($my_team_path_relative && is_dir($root_path . $my_team_path_relative)) {
         $fs_connected = true;
-        // On force l'affichage sur ce dossier spécifique
         $current_view = $my_team_path_relative;
-        // On l'ajoute à la liste pour le select
         $dossiers_detectes[] = $my_team_path_relative;
     } 
-    // Fallback : Si pas d'équipe ou dossier introuvable, on liste la racine
     else {
         $fs_connected = true;
         $current_view = ""; 
@@ -149,11 +143,9 @@ if (is_dir($root_path)) {
     $fs_error_details = "Accès refusé. Debug : " . $debug_msg;
 }
 
-// Upload (Sécurité adaptée pour les sous-dossiers)
+// Upload
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
-    // On autorise le \ pour descendre dans investigations, mais on interdit le .. pour remonter
     $folder_selected = str_replace('..', '', $_POST['target_folder']);
-    
     $dest = $root_path . $folder_selected . "\\" . basename($_FILES["evidence"]["name"]);
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $dest)) {
         $msg_status = "✅ Fichier transféré vers : " . $folder_selected;
@@ -165,9 +157,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connecte
 }
 
 // Galerie
-// On récupère le dossier cible depuis le POST ou on garde celui par défaut (Team)
 $view_to_show = isset($_POST['target_folder']) ? str_replace('..', '', $_POST['target_folder']) : $current_view;
-
 if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
     $files = scandir($root_path . $view_to_show);
     foreach ($files as $f) {
@@ -187,20 +177,38 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
     <title>Detechtive Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Styles complémentaires (Modal, Lightbox, etc.) */
+        /* Styles Complémentaires */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(2px); }
         .modal-content { background-color: var(--card-bg); margin: 5% auto; padding: 25px; border: 1px solid var(--accent-color); width: 90%; max-width: 500px; box-shadow: 0 0 20px rgba(0,0,0,0.7); }
         .close { float: right; font-size: 28px; cursor: pointer; color: var(--text-color); }
         .close:hover { color: var(--accent-color); }
+        
         .fs-status-ok { padding:10px; border:1px solid #2ecc71; color:#2ecc71; background:rgba(46, 204, 113, 0.1); text-align:center; margin-bottom:15px; }
         .fs-status-ko { padding:10px; border:1px solid var(--error-color); color:var(--error-color); background:rgba(231, 76, 60, 0.1); text-align:center; margin-bottom:15px; }
+        
+        /* Galerie */
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; margin-top: 20px; }
-        .preview-card { background: #222; border: 1px solid var(--border-color); padding: 5px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .preview-card { background: #222; border: 1px solid var(--border-color); padding: 5px; text-align: center; cursor: pointer; transition: 0.2s; position: relative; }
         .preview-card:hover { border-color: var(--accent-color); transform: translateY(-2px); }
         .preview-img { width: 100%; height: 100px; object-fit: cover; background: #000; display: block; margin-bottom: 5px; }
         .file-name { font-size: 0.7rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Lightbox Image */
         .lightbox { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); justify-content: center; align-items: center; }
         .lightbox img { max-width: 90%; max-height: 90%; border: 2px solid var(--accent-color); box-shadow: 0 0 30px var(--accent-color); }
+        
+        /* Lightbox Texte */
+        .text-modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); align-items: center; justify-content: center; }
+        .text-modal-content { 
+            background: #000; color: #0f0; 
+            border: 2px solid #0f0; 
+            width: 80%; max-width: 800px; height: 70%; 
+            padding: 20px; overflow: auto; 
+            font-family: 'Courier New', monospace; 
+            white-space: pre-wrap; /* Conserve les sauts de ligne */
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+        }
+
         .alert-success { background-color: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-left: 5px solid #2ecc71; color: #2ecc71; padding: 15px; margin-bottom: 25px; }
     </style>
 </head>
@@ -304,23 +312,48 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
                 <?php if ($view_to_show && !empty($apercus)): ?>
                     <h3 style="margin-top:20px; font-size:1rem; color:var(--accent-color);">CONTENU : <?php echo htmlspecialchars($view_to_show); ?></h3>
                     <div class="preview-grid">
+                        <?php $counter = 0; ?>
                         <?php foreach ($apercus as $file): ?>
                             <?php 
-                                $is_img = in_array($file['ext'], ['jpg', 'jpeg', 'png', 'gif']);
+                                $counter++;
+                                $ext = $file['ext'];
+                                $is_img = in_array($ext, ['jpg', 'jpeg', 'png', 'gif']);
+                                $is_txt = in_array($ext, ['txt', 'log', 'md', 'ini']);
                                 $src = "";
+                                $txt_content = "";
+
+                                // Traitement Image
                                 if ($is_img) {
-                                    $content = @file_get_contents($file['path']);
-                                    if ($content) $src = 'data:image/'.$file['ext'].';base64,'.base64_encode($content);
+                                    $c = @file_get_contents($file['path']);
+                                    if ($c) $src = 'data:image/'.$ext.';base64,'.base64_encode($c);
+                                }
+                                // Traitement Texte (Nouveau !)
+                                elseif ($is_txt) {
+                                    if (filesize($file['path']) < 500000) { // Limite 500 Ko pour éviter crash
+                                        $txt_content = htmlspecialchars(@file_get_contents($file['path']));
+                                    } else {
+                                        $txt_content = "Fichier trop volumineux pour l'aperçu.";
+                                    }
                                 }
                             ?>
-                            <div class="preview-card" onclick="<?php echo ($is_img && $src) ? "openLightbox('$src')" : ""; ?>">
+
+                            <div class="preview-card" 
+                                 onclick="<?php 
+                                    if ($is_img && $src) echo "openLightbox('$src')";
+                                    elseif ($is_txt) echo "openTextModal('txt-content-$counter')";
+                                 ?>">
+                                 
                                 <?php if ($is_img && $src): ?>
                                     <img src="<?php echo $src; ?>" class="preview-img">
+                                <?php elseif ($is_txt): ?>
+                                    <div style="height:100px; display:flex; align-items:center; justify-content:center; font-size:2rem; color:#0f0;">📝</div>
+                                    <div id="txt-content-<?php echo $counter; ?>" style="display:none;"><?php echo $txt_content; ?></div>
                                 <?php elseif ($is_img): ?>
                                     <div style="height:100px; display:flex; align-items:center; justify-content:center; color:var(--error-color);">🔒</div>
                                 <?php else: ?>
                                     <div style="height:100px; display:flex; align-items:center; justify-content:center; font-size:2rem;">📄</div>
                                 <?php endif; ?>
+                                
                                 <div class="file-name"><?php echo htmlspecialchars($file['name']); ?></div>
                             </div>
                         <?php endforeach; ?>
@@ -335,14 +368,22 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
         </section>
     </div>
 
+    <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
+        <img id="lightbox-img" src="">
+    </div>
+
+    <div id="textModal" class="text-modal">
+        <div class="text-modal-content">
+            <span onclick="document.getElementById('textModal').style.display='none'" style="float:right; cursor:pointer; color:#fff;">[ X ] FERMER</span>
+            <h3 style="margin-top:0; border-bottom:1px solid #0f0;">CONTENU DU FICHIER</h3>
+            <div id="textModalBody"></div>
+        </div>
+    </div>
+
     <footer>
         &copy; 2026 DETECHTIVE AGENCY - SECURE TERMINAL V2.0<br>
         AUTHORIZED ACCESS ONLY
     </footer>
-
-    <div id="lightbox" class="lightbox" onclick="this.style.display='none'">
-        <img id="lightbox-img" src="">
-    </div>
 
     <script>
         var modal = document.getElementById("missionModal");
@@ -350,9 +391,17 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
         document.getElementsByClassName("close")[0].onclick = function() { modal.style.display = "none"; }
         window.onclick = function(e) { if(e.target == modal) modal.style.display = "none"; }
 
+        // Fonction Zoom Image
         function openLightbox(src) {
             document.getElementById('lightbox-img').src = src;
             document.getElementById('lightbox').style.display = 'flex';
+        }
+
+        // Fonction Lecture Texte
+        function openTextModal(elementId) {
+            var content = document.getElementById(elementId).innerHTML;
+            document.getElementById('textModalBody').innerHTML = content;
+            document.getElementById('textModal').style.display = 'flex';
         }
     </script>
 </body>
