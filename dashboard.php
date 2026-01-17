@@ -12,7 +12,7 @@ $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
 $share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "Detechtive";
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
 $msg_status = "";
-$msg_type = ""; // Pour gérer la couleur (rouge/vert)
+$msg_type = ""; 
 $fs_connected = false;
 
 /**
@@ -86,17 +86,30 @@ if ($db_online) {
 }
 
 /**
- * 6. GESTION FICHIERS (CENTRALISÉE CONFIG.PHP)
+ * 6. GESTION FICHIERS (INTELLIGENTE : INVESTIGATIONS/TEAM_X)
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
 $debug_msg = "";
 
+// A. Récupération du Team ID
+$my_team_path_relative = ""; // Chemin relatif (ex: investigations\Team_1)
+if ($db_online) {
+    $stmt = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
+    $stmt->execute([$agent_id_session]);
+    $res = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($res) {
+        // --- C'EST ICI QUE ÇA CHANGE ---
+        // On construit le chemin : investigations \ Team_ID
+        $my_team_path_relative = "investigations\\Team_" . $res['team_id'];
+    }
+}
+
 $user_fs = defined('FS_USER') ? FS_USER : "Administrator";
 $pass_fs = defined('FS_PASS') ? FS_PASS : "";
 
-// Nettoyage et Connexion
+// Nettoyage et Connexion à la racine (Detechtive)
 @exec("net use * /delete /y");
 $share_root_cmd = "\\\\" . $file_server_name . "\\" . $share_name; 
 $cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
@@ -104,19 +117,30 @@ $cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pa
 $output = [];
 $return_var = 0;
 exec($cmd_auth . " 2>&1", $output, $return_var); 
-
 if ($return_var !== 0) { $debug_msg = implode(" / ", $output); }
 
-// Navigation
+// Navigation Intelligente
 if (is_dir($root_path)) {
-    $fs_connected = true;
-    $contenu = @scandir($root_path);
-    if ($contenu) {
-        foreach ($contenu as $item) {
-            if ($item != "." && $item != ".." && !strpos($item, '$') && 
-                $item != "System Volume Information" && $item != "RECYCLE.BIN" && 
-                is_dir($root_path . $item)) {
-                $dossiers_detectes[] = $item;
+    // Si on a une équipe, on vérifie si son dossier existe
+    if ($my_team_path_relative && is_dir($root_path . $my_team_path_relative)) {
+        $fs_connected = true;
+        // On force l'affichage sur ce dossier spécifique
+        $current_view = $my_team_path_relative;
+        // On l'ajoute à la liste pour le select
+        $dossiers_detectes[] = $my_team_path_relative;
+    } 
+    // Fallback : Si pas d'équipe ou dossier introuvable, on liste la racine
+    else {
+        $fs_connected = true;
+        $current_view = ""; 
+        $contenu = @scandir($root_path);
+        if ($contenu) {
+            foreach ($contenu as $item) {
+                if ($item != "." && $item != ".." && !strpos($item, '$') && 
+                    $item != "System Volume Information" && $item != "RECYCLE.BIN" && 
+                    is_dir($root_path . $item)) {
+                    $dossiers_detectes[] = $item;
+                }
             }
         }
     }
@@ -125,25 +149,29 @@ if (is_dir($root_path)) {
     $fs_error_details = "Accès refusé. Debug : " . $debug_msg;
 }
 
-// Upload
+// Upload (Sécurité adaptée pour les sous-dossiers)
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
-    $folder_selected = str_replace(['/', '\\', '..'], '', $_POST['target_folder']);
+    // On autorise le \ pour descendre dans investigations, mais on interdit le .. pour remonter
+    $folder_selected = str_replace('..', '', $_POST['target_folder']);
+    
     $dest = $root_path . $folder_selected . "\\" . basename($_FILES["evidence"]["name"]);
     if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $dest)) {
         $msg_status = "✅ Fichier transféré vers : " . $folder_selected;
         $msg_type = "success";
     } else {
-        $msg_status = "❌ Erreur d'écriture (Droits AD insuffisants ?).";
+        $msg_status = "❌ Erreur d'écriture (Droits insuffisants ?).";
         $msg_type = "error";
     }
 }
 
 // Galerie
-$current_view = isset($_POST['target_folder']) ? str_replace(['/', '\\', '..'], '', $_POST['target_folder']) : "";
-if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
-    $files = scandir($root_path . $current_view);
+// On récupère le dossier cible depuis le POST ou on garde celui par défaut (Team)
+$view_to_show = isset($_POST['target_folder']) ? str_replace('..', '', $_POST['target_folder']) : $current_view;
+
+if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
+    $files = scandir($root_path . $view_to_show);
     foreach ($files as $f) {
-        $full_p = $root_path . $current_view . "\\" . $f;
+        $full_p = $root_path . $view_to_show . "\\" . $f;
         if ($f != "." && $f != ".." && !is_dir($full_p)) {
             $ext = strtolower(pathinfo($f, PATHINFO_EXTENSION));
             $apercus[] = ['name' => $f, 'path' => $full_p, 'ext' => $ext];
@@ -158,49 +186,22 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
     <meta charset="UTF-8">
     <title>Detechtive Dashboard</title>
     <link rel="stylesheet" href="style.css">
-
     <style>
-        /* --- Styles spécifiques héritant de tes variables --- */
-        
-        /* Modal (Fenêtre Pop-up) */
+        /* Styles complémentaires (Modal, Lightbox, etc.) */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); backdrop-filter: blur(2px); }
-        .modal-content { 
-            background-color: var(--card-bg); 
-            margin: 5% auto; 
-            padding: 25px; 
-            border: 1px solid var(--accent-color); 
-            width: 90%; max-width: 500px; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.7);
-        }
+        .modal-content { background-color: var(--card-bg); margin: 5% auto; padding: 25px; border: 1px solid var(--accent-color); width: 90%; max-width: 500px; box-shadow: 0 0 20px rgba(0,0,0,0.7); }
         .close { float: right; font-size: 28px; cursor: pointer; color: var(--text-color); }
         .close:hover { color: var(--accent-color); }
-
-        /* Status File Server */
         .fs-status-ok { padding:10px; border:1px solid #2ecc71; color:#2ecc71; background:rgba(46, 204, 113, 0.1); text-align:center; margin-bottom:15px; }
         .fs-status-ko { padding:10px; border:1px solid var(--error-color); color:var(--error-color); background:rgba(231, 76, 60, 0.1); text-align:center; margin-bottom:15px; }
-
-        /* Galerie Grid */
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; margin-top: 20px; }
-        .preview-card { 
-            background: #222; 
-            border: 1px solid var(--border-color); 
-            padding: 5px; text-align: center; 
-            cursor: pointer; transition: 0.2s; 
-        }
+        .preview-card { background: #222; border: 1px solid var(--border-color); padding: 5px; text-align: center; cursor: pointer; transition: 0.2s; }
         .preview-card:hover { border-color: var(--accent-color); transform: translateY(-2px); }
         .preview-img { width: 100%; height: 100px; object-fit: cover; background: #000; display: block; margin-bottom: 5px; }
         .file-name { font-size: 0.7rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        /* Lightbox (Zoom) */
         .lightbox { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); justify-content: center; align-items: center; }
         .lightbox img { max-width: 90%; max-height: 90%; border: 2px solid var(--accent-color); box-shadow: 0 0 30px var(--accent-color); }
-        
-        /* Alert Success (car ton CSS n'a que alert-error) */
-        .alert-success {
-            background-color: rgba(46, 204, 113, 0.15);
-            border: 1px solid #2ecc71; border-left: 5px solid #2ecc71;
-            color: #2ecc71; padding: 15px; margin-bottom: 25px;
-        }
+        .alert-success { background-color: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; border-left: 5px solid #2ecc71; color: #2ecc71; padding: 15px; margin-bottom: 25px; }
     </style>
 </head>
 <body>
@@ -232,7 +233,6 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <form method="POST">
                     <label>TITRE</label>
                     <input type="text" name="title" required>
-                    
                     <div style="display:flex; gap:15px;">
                         <div style="flex:1;">
                             <label>CODE</label>
@@ -245,10 +245,8 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                             </select>
                         </div>
                     </div>
-                    
                     <label>DESCRIPTION</label>
                     <textarea name="description" style="height:80px;"></textarea>
-                    
                     <button type="submit" name="add_mission" style="width:100%; margin-top:10px;">ENREGISTRER</button>
                 </form>
             </div>
@@ -290,22 +288,21 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <form method="POST" enctype="multipart/form-data" style="background:#111; padding:20px; border:1px solid var(--border-color);">
                     <div style="display:flex; gap:10px; align-items:center;">
                         <select name="target_folder" onchange="this.form.submit()" required style="flex:1; padding:12px; background:#222; border:1px solid var(--border-color); color:white;">
-                            <option value="">-- SÉLECTIONNER UN DOSSIER --</option>
                             <?php foreach($dossiers_detectes as $folder): ?>
-                                <option value="<?php echo htmlspecialchars($folder); ?>" <?php echo ($current_view == $folder) ? 'selected' : ''; ?>>
-                                    📂 <?php echo htmlspecialchars($folder); ?>
+                                <option value="<?php echo htmlspecialchars($folder); ?>" <?php echo ($view_to_show == $folder) ? 'selected' : ''; ?>>
+                                    📂 DOSSIER D'ÉQUIPE : <?php echo htmlspecialchars($folder); ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
-                        <?php if ($current_view): ?>
+                        <?php if ($view_to_show): ?>
                             <input type="file" name="evidence" style="flex:1; margin:0;">
                             <button type="submit" style="margin:0;">UPLOAD</button>
                         <?php endif; ?>
                     </div>
                 </form>
 
-                <?php if ($current_view && !empty($apercus)): ?>
-                    <h3 style="margin-top:20px; font-size:1rem; color:var(--accent-color);">CONTENU : <?php echo htmlspecialchars($current_view); ?></h3>
+                <?php if ($view_to_show && !empty($apercus)): ?>
+                    <h3 style="margin-top:20px; font-size:1rem; color:var(--accent-color);">CONTENU : <?php echo htmlspecialchars($view_to_show); ?></h3>
                     <div class="preview-grid">
                         <?php foreach ($apercus as $file): ?>
                             <?php 
@@ -332,7 +329,7 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
 
             <?php else: ?>
                 <div class="fs-status-ko">
-                    CONNEXION ÉCHOUÉE (SERVEUR INACCESSIBLE)
+                    CONNEXION ÉCHOUÉE (<?php echo $fs_error_details; ?>)
                 </div>
             <?php endif; ?>
         </section>
