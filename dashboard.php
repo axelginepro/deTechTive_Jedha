@@ -9,8 +9,7 @@ require_once 'config.php';
  * 1. CONFIG INFRASTRUCTURE
  */
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
-// On garde "Detechtive" comme racine d'après tes tests
-$share_name = "Detechtive"; 
+$share_name = "Detechtive"; // Racine du partage
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
 $msg_status = "";
 $fs_connected = false;
@@ -75,22 +74,23 @@ if (isset($_POST['add_mission']) && $db_online) {
  */
 $missions = [];
 if ($db_online) {
+    // On sélectionne bien la creation_date
     $stmt = $pdo->prepare("SELECT i.* FROM investigations i JOIN agents a ON i.team_id = a.team_id WHERE a.id = ? ORDER BY i.creation_date DESC");
     $stmt->execute([$agent_id_session]);
     $missions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 /**
- * 6. GESTION FICHIERS (GALERIE & UPLOAD)
+ * 6. GESTION FICHIERS (CORRECTIF AUTHENTIFICATION)
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
 
-// --- AUTHENTIFICATION WINDOWS (ROBUSTE) ---
+// --- AUTHENTIFICATION WINDOWS ---
 @exec("net use " . $root_path . " /delete /y");
 $user_fs = "Administrator"; 
-$pass_fs = '2opw=-nl5?^w161'; // Simple quotes pour protéger le ^
+$pass_fs = '2opw=-nl5?^w161'; // Simples quotes pour protéger le ^
 $cmd_auth = 'net use "' . $root_path . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
 @exec($cmd_auth); 
 
@@ -108,7 +108,7 @@ if (is_dir($root_path)) {
     }
 } else {
     $fs_connected = false;
-    $fs_error_details = "Impossible d'accéder au partage (Vérifiez pare-feu/droits).";
+    $fs_error_details = "Impossible d'accéder au partage.";
 }
 
 // UPLOAD
@@ -122,7 +122,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connecte
     }
 }
 
-// LECTURE GALERIE
+// GALERIE
 $current_view = isset($_POST['target_folder']) ? str_replace(['/', '\\', '..'], '', $_POST['target_folder']) : "";
 if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
     $files = scandir($root_path . $current_view);
@@ -156,19 +156,19 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         .btn-action { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; }
         .btn-action:hover { background: #d4ac0d; }
 
-        /* GALERIE THUMBNAILS */
+        /* GALERIE */
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; margin-top: 20px; }
         .preview-card { background: #252525; border: 1px solid #444; padding: 5px; text-align: center; border-radius: 4px; transition: transform 0.2s; cursor: pointer; }
         .preview-card:hover { transform: scale(1.05); border-color: var(--accent); }
         .preview-img { width: 100%; height: 120px; object-fit: cover; background: #000; border-radius: 3px; display: block; }
         .file-name { font-size: 0.7rem; color: #aaa; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; }
 
-        /* LIGHTBOX (ZOOM) */
+        /* LIGHTBOX */
         .lightbox { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); justify-content: center; align-items: center; }
         .lightbox img { max-width: 90%; max-height: 90%; border: 2px solid var(--accent); box-shadow: 0 0 20px rgba(241, 196, 15, 0.5); }
-        .lightbox:target { display: flex; } /* Astuce CSS pure si on utilisait des ancres, mais ici on fera JS simple */
+        .lightbox:target { display: flex; }
 
-        /* MODAL MISSION */
+        /* MODAL */
         .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
         .modal-content { background-color: #1a252f; margin: 10% auto; padding: 25px; border: 1px solid var(--accent); width: 90%; max-width: 500px; border-radius: 8px; }
         .close { float: right; font-size: 28px; cursor: pointer; color: #aaa; }
@@ -217,10 +217,17 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <?php foreach($missions as $m): ?>
                 <div class="mission-card">
                     <div class="mission-header">
-                        <strong><?php echo htmlspecialchars($m['title']); ?> <small>(<?php echo htmlspecialchars($m['investigation_code']); ?>)</small></strong>
+                        <div>
+                            <strong><?php echo htmlspecialchars($m['title']); ?></strong>
+                            
+                            <div style="font-size:0.8rem; color:#888; margin-top:4px;">
+                                🆔 <?php echo htmlspecialchars($m['investigation_code']); ?> &nbsp;|&nbsp; 
+                                📅 <?php echo date("d/m/Y", strtotime($m['creation_date'])); ?>
+                            </div>
+                        </div>
                         <span class="badge"><?php echo htmlspecialchars($m['status']); ?></span>
                     </div>
-                    <div style="color:#ccc; font-size:0.9rem;"><?php echo nl2br(htmlspecialchars($m['description'])); ?></div>
+                    <div style="color:#ccc; font-size:0.9rem; margin-top:8px;"><?php echo nl2br(htmlspecialchars($m['description'])); ?></div>
                 </div>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -299,7 +306,7 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         document.getElementsByClassName("close")[0].onclick = function() { modal.style.display = "none"; }
         window.onclick = function(e) { if(e.target == modal) modal.style.display = "none"; }
 
-        // Gestion Lightbox (Zoom Image)
+        // Gestion Lightbox
         function openLightbox(src) {
             document.getElementById('lightbox-img').src = src;
             document.getElementById('lightbox').style.display = 'flex';
