@@ -12,14 +12,11 @@ require_once 'config.php';
  * 1. CONFIGURATION DE L'INFRASTRUCTURE
  * ============================================================
  */
-// Utilisation des constantes définies dans config.php
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
 $share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "resources";
-
-// Construction du chemin UNC (Network Path)
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
 $msg_status = "";
-$fs_connected = false; // Variable d'état pour le File Server
+$fs_connected = false;
 
 /**
  * ============================================================
@@ -34,7 +31,6 @@ if (!isset($_SESSION['agent_id'])) {
 $agent_id_session = $_SESSION['agent_id'];
 $nom_agent = $_SESSION['agent_name'];
 
-// --- ANTI-DOUBLON ---
 if (isset($_SESSION['flash_message'])) {
     $msg_status = $_SESSION['flash_message'];
     unset($_SESSION['flash_message']); 
@@ -59,6 +55,20 @@ try {
     $db_online = false;
     $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
 }
+
+// --- NOUVEAU : RÉCUPÉRATION DU CONTACT ---
+$agent_contact = "Non renseigné"; 
+if ($db_online) {
+    try {
+        $stmt_info = $pdo->prepare("SELECT contact FROM agents WHERE id = ?");
+        $stmt_info->execute([$agent_id_session]);
+        $info = $stmt_info->fetch(PDO::FETCH_ASSOC);
+        if ($info && !empty($info['contact'])) {
+            $agent_contact = $info['contact'];
+        }
+    } catch (Exception $e) {}
+}
+// -----------------------------------------
 
 /**
  * ============================================================
@@ -109,40 +119,25 @@ if ($db_online) {
 
 /**
  * ============================================================
- * 6. GESTION DU SERVEUR DE FICHIERS (FIX AUTHENTIFICATION)
+ * 6. GESTION DU SERVEUR DE FICHIERS
  * ============================================================
  */
 $dossiers_detectes = [];
 $apercus = [];
 $fs_error_details = "";
 
-// --- LE FIX MAGIQUE POUR LA DÉMO ---
-// On déconnecte d'abord pour éviter les conflits
 @exec("net use " . $root_path . " /delete /y");
-
-// On force la connexion avec un utilisateur administrateur de la VM File Server
-// ADAPTE 'Administrator' et 'TonMotDePasse' avec les infos de ta VM 192.168.10.19 !
 $user_fs = "Administrator"; 
 $pass_fs = "2opw=-nl5?`^w161";
-// On ajoute des guillemets " " autour du mot de passe pour protéger les caractères spéciaux (^ et ?)
 $cmd_auth = 'net use "' . $root_path . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
-
-// On exécute la commande windows silencieusement
 @exec($cmd_auth); 
 
-// --- FIN DU FIX ---
-
-// 1. Test initial de connexion
 if (is_dir($root_path)) {
     $fs_connected = true;
-    
-    // 2. Scan des dossiers
-    // Le @ devant scandir cache l'erreur brute si ça échoue, pour afficher notre propre message
     $contenu = @scandir($root_path);
-    
     if ($contenu === false) {
         $fs_connected = false;
-        $fs_error_details = "Accès refusé (Erreur 5). Vérifiez le mot de passe dans le code PHP.";
+        $fs_error_details = "Accès refusé.";
     } else {
         foreach ($contenu as $item) {
             if ($item != "." && $item != ".." && !strpos($item, '$') && 
@@ -158,7 +153,6 @@ if (is_dir($root_path)) {
     $fs_error_details = "Impossible d'atteindre le chemin : " . $root_path;
 }
 
-// 3. Action Upload
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
     $folder_selected = str_replace(['/', '\\', '..'], '', $_POST['target_folder']);
     $final_upload_dir = $root_path . $folder_selected . "\\";
@@ -166,7 +160,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connecte
     $destination = $final_upload_dir . $file_name;
 
     if (!is_writable($final_upload_dir)) {
-        $msg_status = "⛔ Erreur Droits : Le serveur web n'a pas le droit d'écrire ici.";
+        $msg_status = "⛔ Erreur Droits.";
     } elseif (move_uploaded_file($_FILES["evidence"]["tmp_name"], $destination)) {
         $msg_status = "✅ Preuve déposée avec succès dans : " . $folder_selected;
     } else {
@@ -174,9 +168,7 @@ if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connecte
     }
 }
 
-// 4. Action Aperçu (Thumbnails)
 $current_view = isset($_POST['target_folder']) ? str_replace(['/', '\\', '..'], '', $_POST['target_folder']) : "";
-
 if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
     $files = scandir($root_path . $current_view);
     foreach ($files as $f) {
@@ -198,27 +190,17 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         :root { --accent: #f1c40f; --bg: #121212; --card: #1e1e1e; --text: #e0e0e0; }
         body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; padding: 20px; }
         .container { max-width: 900px; margin: auto; }
-        
-        /* Alertes */
         .alert { padding: 15px; border-radius: 5px; margin-bottom: 25px; font-weight: bold; border: 1px solid #555; }
         .alert-info { background: #34495e; border-color: #5d6d7e; }
-        .alert-error { background: rgba(192, 57, 43, 0.9); border-color: #e74c3c; }
-        
-        .header-flex { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
+        .header-flex { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
         .mission-card { background: var(--card); padding: 15px; border-left: 5px solid var(--accent); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-        
-        /* Grille Aperçu */
         .preview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
         .preview-card { background: #252525; border: 1px solid #444; padding: 10px; text-align: center; border-radius: 4px; overflow: hidden; }
         .preview-img { width: 100%; height: 110px; object-fit: cover; background: #000; margin-bottom: 8px; border-radius: 3px; }
-        
-        /* Formulaires */
         select, button, input[type="text"] { width: 100%; padding: 12px; margin-bottom: 10px; background: #2c2c2c; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
         .btn-upload { background: var(--accent); color: black; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
         .btn-upload:hover { background: #d4ac0d; }
         .add-mission-box { background: #1a252f; border: 1px dashed #555; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-        
-        /* Status File Server */
         .fs-status { padding: 10px; border-radius: 4px; margin-bottom: 15px; text-align: center; font-weight: bold; }
         .fs-ok { background: rgba(39, 174, 96, 0.3); border: 1px solid #27ae60; color: #2ecc71; }
         .fs-ko { background: rgba(192, 57, 43, 0.3); border: 1px solid #c0392b; color: #e74c3c; }
@@ -232,10 +214,14 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
         <?php endif; ?>
 
         <div class="header-flex">
-            <h1>Agent : <?php echo htmlspecialchars($nom_agent); ?></h1>
+            <div>
+                <h1 style="margin-bottom: 5px; margin-top: 0;">Agent : <?php echo htmlspecialchars($nom_agent); ?></h1>
+                <small style="color: #aaa; font-size: 0.95rem;">
+                    📧 Contact : <span style="color: #fff; font-family: monospace;"><?php echo htmlspecialchars($agent_contact); ?></span>
+                </small>
+            </div>
             <a href="index.php" style="color: #e74c3c; text-decoration: none; font-weight: bold;">[ DÉCONNEXION ]</a>
         </div>
-
         <section>
             <h2>📋 Vos Missions</h2>
             <?php if (empty($missions)): ?>
@@ -285,7 +271,6 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                 <div class="fs-status fs-ko">
                     ❌ NON CONNECTÉ <br>
                     <small>Erreur : <?php echo $fs_error_details; ?></small><br>
-                    <small><i>Astuce : Vérifiez que le partage "Tout le monde" est actif sur la VM.</i></small>
                 </div>
             <?php endif; ?>
 
@@ -314,7 +299,6 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                             <div class="preview-card">
                                 <?php if (in_array($file['ext'], ['jpg', 'jpeg', 'png', 'gif'])): ?>
                                     <?php 
-                                        // Lecture sécurisée du contenu pour conversion Base64
                                         $content = @file_get_contents($file['path']); 
                                         if ($content !== false):
                                             $img_data = base64_encode($content);
@@ -336,7 +320,8 @@ if ($fs_connected && $current_view && is_dir($root_path . $current_view)) {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-            <?php endif; ?> </section>
+            <?php endif; ?> 
+        </section>
     </div>
 </body>
 </html>
