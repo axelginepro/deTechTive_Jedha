@@ -3,59 +3,49 @@ session_start();
 
 $error = "";
 
-// --- CONFIG BACKDOOR (Reste inchangé pour ton exercice) ---
-$backup_user = "test";
-$backup_pass = "test"; 
-
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $agent_code_input = $_POST['agent_code'];
     $password_input   = $_POST['password'];
 
-    // --- A. BACKDOOR ---
-    if ($agent_code_input === $backup_user && $password_input === $backup_pass) {
-        $_SESSION['agent_id'] = 999;
-        $_SESSION['agent_name'] = "Agent TEST (Mode Secours)";
-        header("Location: dashboard.php");
-        exit();
-    } 
-    
-    // --- B. CONNEXION SÉCURISÉE ---
-    else {
-        if (!file_exists('config.php')) { die("Erreur config."); }
-        require_once 'config.php';
+    // --- CONNEXION SÉCURISÉE (UNIQUE MÉTHODE) ---
+    if (!file_exists('config.php')) { die("Erreur critique : Fichier de configuration manquant."); }
+    require_once 'config.php';
 
-        $conn = @mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
+    // Tentative de connexion à la BDD
+    $conn = @mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
 
-        if ($conn) {
-            $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
-            
-            // 1. ON CHERCHE L'UTILISATEUR PAR SON NOM SEULEMENT
-            // On ne met PLUS le password dans le WHERE
-            $sql = "SELECT * FROM agents WHERE username = '$agent_safe'";
-            $result = mysqli_query($conn, $sql);
+    if ($conn) {
+        // Protection contre les injections SQL basiques pour le username
+        $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
+        
+        // 1. ON CHERCHE L'UTILISATEUR PAR SON NOM SEULEMENT
+        $sql = "SELECT * FROM agents WHERE username = '$agent_safe'";
+        $result = mysqli_query($conn, $sql);
 
-            if ($row = mysqli_fetch_assoc($result)) {
-                // 2. VÉRIFICATION DU HASH
-                // password_verify(mot_de_passe_saisi, hash_en_bdd)
-                if (password_verify($password_input, $row['password'])) {
-                    
-                    // SUCCÈS : On connecte
-                    $_SESSION['agent_id'] = $row['id'];
-                    $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
-                    header("Location: dashboard.php");
-                    exit();
+        if ($row = mysqli_fetch_assoc($result)) {
+            // 2. VÉRIFICATION DU HASH DU MOT DE PASSE
+            // password_verify compare le texte clair avec le hash stocké en BDD
+            if (password_verify($password_input, $row['password'])) {
+                
+                // SUCCÈS : On initialise la session
+                $_SESSION['agent_id'] = $row['id'];
+                // On utilise le nom complet si dispo, sinon le username
+                $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
+                
+                header("Location: dashboard.php");
+                exit();
 
-                } else {
-                    // Mauvais mot de passe
-                    $error = "⛔ ACCÈS REFUSÉ : Identifiants invalides.";
-                }
             } else {
-                // Utilisateur inconnu
+                // Mauvais mot de passe
                 $error = "⛔ ACCÈS REFUSÉ : Identifiants invalides.";
             }
         } else {
-            $error = "⚠️ ERREUR SYSTÈME : Connexion BDD impossible.";
+            // Utilisateur inconnu
+            $error = "⛔ ACCÈS REFUSÉ : Identifiants invalides.";
         }
+    } else {
+        // Échec de la connexion au serveur MySQL
+        $error = "⚠️ ERREUR SYSTÈME : Connexion à la base de données impossible.";
     }
 }
 ?>
