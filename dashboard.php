@@ -29,12 +29,23 @@ if (isset($_SESSION['flash_message'])) {
 }
 
 /**
- * 3. CONNEXION BDD
+ * 3. CONNEXION BDD AVEC SSL
  */ 
 try {
     if (!extension_loaded('pdo_mysql')) { throw new Exception("Driver pdo_mysql manquant."); }
     $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
-    $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, [ PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION ]);
+    
+    // --- DÉBUT CONFIG SSL PDO ---
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        // Le chemin exact trouvé dans ta capture
+        PDO::MYSQL_ATTR_SSL_CA => "C:/webapp/deTechTive_Jedha/ca-cert.pem",
+        PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
+    ];
+    
+    $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, $options);
+    // --- FIN CONFIG SSL PDO ---
+
     $db_online = true;
 } catch (Exception $e) {
     $db_online = false;
