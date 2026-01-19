@@ -1,18 +1,19 @@
 <?php
-// --- CONFIGURATION BASE DE DONNÉES ---
+$lib_path = __DIR__ . '/../common.php';
+
+if (file_exists($lib_path)) {
+    require_once $lib_path;
+} else {
+    die("Erreur 500 : Dépendance système manquante.");
+}
+
+// --- CONFIGURATION DE L'APPLICATION ---
 define('DB_SERVER', '192.168.10.18');
 define('DB_USERNAME', 'db_connect'); 
-define('DB_PASSWORD', 'DetechtiveSecretPass2026');  
 define('DB_NAME', 'detechtive_db');
 
-// --- CONFIGURATION FILE SERVER (AD) ---
+// --- CONFIGURATION FILE SERVER ---
 define('FS_IP', '192.168.10.19'); 
-
-// IMPORTANT : Le nom racine du partage (vu sur tes captures)
 define('FS_SHARE_NAME', 'Detechtive'); 
-
-// Identifiants Active Directory pour le script PHP
 define('FS_USER', 'DETECHTIVE\\Administrator'); 
-define('FS_PASS', 'abricotbateauextravagantbatonchat'); 
-// flag={Bienjoué!!}
 ?>
