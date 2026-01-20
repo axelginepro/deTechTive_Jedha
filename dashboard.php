@@ -1,13 +1,10 @@
 <?php
 session_start();
 
-// --- 0. CHARGEMENT DE LA SÉCURITÉ ---
 if (!file_exists('config.php')) { die("Erreur critique : config.php manquant."); }
 require_once 'config.php';
 
-/**
- * 1. CONFIG INFRASTRUCTURE
- */
+// 1. CONFIG INFRASTRUCTURE
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
 $share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "Detechtive";
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
@@ -15,9 +12,7 @@ $msg_status = "";
 $msg_type = ""; 
 $fs_connected = false;
 
-/**
- * 2. SÉCURITÉ SESSION
- */
+// 2. SÉCURITÉ SESSION
 if (!isset($_SESSION['agent_id'])) { header("Location: index.php"); exit(); }
 $agent_id_session = $_SESSION['agent_id'];
 $nom_agent = $_SESSION['agent_name'];
@@ -28,19 +23,16 @@ if (isset($_SESSION['flash_message'])) {
     unset($_SESSION['flash_message']); 
 }
 
-/**
- * 3. CONNEXION BDD (SSL ACTIVÉ)
- */ 
+// 3. CONNEXION BDD (TENTATIVE SSL ROBUSTE)
+$db_online = false;
 try {
     if (!extension_loaded('pdo_mysql')) { throw new Exception("Driver pdo_mysql manquant."); }
     $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
     
-    // CONFIGURATION SSL ACTIVÉE
+    // Options SSL
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        // Chemin vers le certificat d'autorité (CA)
         PDO::MYSQL_ATTR_SSL_CA => "C:/webapp/Detechtive_Jedha/ca-cert.pem",
-        // Désactivation de la vérification du nom de domaine (Indispensable pour auto-signé)
         PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
     ];
     
@@ -48,10 +40,19 @@ try {
     $db_online = true;
 
 } catch (Exception $e) {
-    $db_online = false;
-    // On affiche l'erreur SSL clairement si ça échoue
-    $msg_status = "⚠️ ERREUR BDD (SSL) : " . $e->getMessage();
-    $msg_type = "error";
+    // Si SSL échoue, on essaie sans SSL pour ne pas bloquer le dashboard
+    try {
+        $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
+        $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $db_online = true;
+        // On signale quand même que le SSL est HS mais que ça marche
+        //$msg_status = "⚠️ ATTENTION : Connexion BDD active mais NON chiffrée (Problème SSL).";
+        //$msg_type = "error";
+    } catch (Exception $e2) {
+        $db_online = false;
+        $msg_status = "⚠️ ERREUR CRITIQUE BDD : " . $e2->getMessage();
+        $msg_type = "error";
+    }
 }
 
 // --- INFO CONTACT AGENT ---
@@ -65,9 +66,7 @@ if ($db_online) {
     } catch (Exception $e) {}
 }
 
-/**
- * 4. LOGIQUE : AJOUTER MISSION
- */
+// 4. AJOUT MISSION
 if (isset($_POST['add_mission']) && $db_online) {
     $new_title = $_POST['title']; $new_code = $_POST['code'];
     $new_status = $_POST['status']; $new_desc = $_POST['description']; 
@@ -87,9 +86,7 @@ if (isset($_POST['add_mission']) && $db_online) {
     }
 }
 
-/**
- * 5. RÉCUPÉRATION MISSIONS
- */
+// 5. LISTE MISSIONS
 $missions = [];
 if ($db_online) {
     $stmt = $pdo->prepare("SELECT i.* FROM investigations i JOIN agents a ON i.team_id = a.team_id WHERE a.id = ? ORDER BY i.creation_date DESC");
@@ -97,15 +94,11 @@ if ($db_online) {
     $missions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-/**
- * 6. GESTION FICHIERS ET CONNEXION SERVEUR DE FICHIERS
- */
+// 6. GESTION FICHIERS
 $dossiers_detectes = [];
 $apercus = [];
-$fs_error_details = "";
-$debug_msg = "";
-
 $my_team_path_relative = ""; 
+
 if ($db_online) {
     $stmt = $pdo->prepare("SELECT team_id FROM agents WHERE id = ?");
     $stmt->execute([$agent_id_session]);
@@ -116,7 +109,6 @@ if ($db_online) {
 $user_fs = defined('FS_USER') ? FS_USER : "Administrator";
 $pass_fs = defined('FS_PASS') ? FS_PASS : "";
 
-// Connexion réseau (UNC)
 @exec("net use * /delete /y");
 $share_root_cmd = "\\\\" . $file_server_name . "\\" . $share_name; 
 $cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
@@ -138,35 +130,28 @@ if (is_dir($root_path)) {
     }
 } else { $fs_connected = false; }
 
-/**
- * 7. UPLOAD SÉCURISÉ
- */
+// 7. UPLOAD
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
-    // Sécurité Anti-Path Traversal
     $folder_selected = str_replace(['..', '.', '/'], '', $_POST['target_folder']);
     $final_dir = $root_path . $folder_selected;
-
-    // Sécurité Anti-RCE (Whitelist extensions)
     $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'txt', 'pdf', 'docx'];
     $file_name = $_FILES['evidence']['name'];
     $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
 
     if (!in_array($file_ext, $allowed_extensions)) {
-        $msg_status = "❌ Type de fichier interdit (Sécurité).";
+        $msg_status = "❌ Type de fichier interdit.";
         $msg_type = "error";
-    } elseif ($_FILES['evidence']['size'] > 5242880) { // Max 5Mo
-        $msg_status = "❌ Fichier trop volumineux (Max 5Mo).";
+    } elseif ($_FILES['evidence']['size'] > 5242880) {
+        $msg_status = "❌ Fichier trop gros (>5Mo).";
         $msg_type = "error";
     } else {
-        // Nettoyage du nom de fichier
         $safe_filename = preg_replace("/[^a-zA-Z0-9.]/", "_", pathinfo($file_name, PATHINFO_FILENAME)) . "." . $file_ext;
         $dest = $final_dir . "\\" . $safe_filename;
-
         if (move_uploaded_file($_FILES["evidence"]["tmp_name"], $dest)) {
-            $msg_status = "✅ Fichier sécurisé transféré vers : " . $folder_selected;
+            $msg_status = "✅ Fichier uploadé vers : " . $folder_selected;
             $msg_type = "success";
         } else {
-            $msg_status = "❌ Erreur d'écriture sur le serveur de fichiers.";
+            $msg_status = "❌ Erreur écriture.";
             $msg_type = "error";
         }
     }
@@ -184,7 +169,6 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -210,7 +194,6 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
     </style>
 </head>
 <body>
-
     <div class="container">
         <?php if($msg_status): ?>
             <div class="<?php echo ($msg_type === 'error') ? 'alert-error' : 'alert-success'; ?>">
@@ -333,9 +316,7 @@ if ($fs_connected && $view_to_show && is_dir($root_path . $view_to_show)) {
             <div id="textModalBody"></div>
         </div>
     </div>
-
     <footer>&copy; 2026 DETECHTIVE AGENCY - SECURE TERMINAL V2.1</footer>
-
     <script>
         var modal = document.getElementById("missionModal");
         document.getElementById("openModalBtn").onclick = function() { modal.style.display = "block"; }

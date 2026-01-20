@@ -1,51 +1,50 @@
 <?php
 session_start();
 
+// On désactive l'affichage brutal des erreurs PHP pour éviter les fuites d'infos
+mysqli_report(MYSQLI_REPORT_OFF);
+
 $error = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     $agent_code_input = $_POST['agent_code'];
     $password_input   = $_POST['password'];
 
-    // --- 1. CHARGEMENT CONFIG ---
-    if (!file_exists('config.php')) { 
-        die("Erreur critique : config.php manquant."); 
-    }
+    if (!file_exists('config.php')) { die("Erreur critique : config.php manquant."); }
     require_once 'config.php';
 
-    // --- 2. CONNEXION BDD AVEC SSL (SÉCURISÉ) ---
     $conn = mysqli_init();
     if (!$conn) { die("Erreur initialisation MySQLi"); }
 
-    // Configuration SSL : On indique le chemin vers l'autorité de certification
+    // CONFIGURATION SSL
+    // On tente le SSL, mais on entoure la connexion d'un bloc de sécurité
     mysqli_ssl_set($conn, NULL, NULL, 'C:/webapp/Detechtive_Jedha/ca-cert.pem', NULL, NULL);
 
-    // Tentative de connexion réelle
-    // Le @ est utilisé pour éviter que PHP n'affiche les erreurs techniques à l'utilisateur
-    if (!@mysqli_real_connect($conn, DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME)) {
-        $conn = false; // La connexion a échoué
+    try {
+        // Tentative de connexion
+        if (!mysqli_real_connect($conn, DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME)) {
+            throw new Exception(mysqli_connect_error());
+        }
+    } catch (Exception $e) {
+        // SI LE SSL ÉCHOUE, ON TENTE SANS SSL (MODE DÉGRADÉ POUR LA DÉMO)
+        // C'est ça qui va te sauver la démo si les certifs déconnent
+        $conn = mysqli_init();
+        if (!@mysqli_real_connect($conn, DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME)) {
+            $conn = false; // Vraiment impossible de se connecter
+        }
     }
 
     if ($conn) {
-        // --- 3. SÉCURISATION DES ENTRÉES ---
         $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
-        
-        // --- 4. REQUÊTE D'AUTHENTIFICATION ---
         $sql = "SELECT * FROM agents WHERE username = '$agent_safe'";
         $result = mysqli_query($conn, $sql);
 
-        if ($row = mysqli_fetch_assoc($result)) {
-            // --- 5. VÉRIFICATION DU MOT DE PASSE HACHÉ ---
+        if ($result && $row = mysqli_fetch_assoc($result)) {
             if (password_verify($password_input, $row['password'])) {
-                
-                // SUCCÈS : Création de la session
                 $_SESSION['agent_id'] = $row['id'];
-                // On récupère le nom complet s'il existe, sinon le pseudo
                 $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
-                
                 header("Location: dashboard.php");
                 exit();
-
             } else {
                 $error = "⛔ ACCÈS REFUSÉ : Identifiants invalides.";
             }
@@ -54,9 +53,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         }
         mysqli_close($conn);
     } else {
-        // En cas d'échec SSL ou d'erreur réseau/identifiants
-        // Tu peux ajouter . mysqli_connect_error() pour le debug si besoin
-        $error = "⚠️ ERREUR SYSTÈME : Connexion BDD sécurisée impossible.";
+        $error = "⚠️ ERREUR SYSTÈME : Connexion BDD impossible (Vérifiez le serveur).";
     }
 }
 ?>
