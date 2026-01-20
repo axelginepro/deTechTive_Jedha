@@ -13,21 +13,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
     }
     require_once 'config.php';
 
-    // --- 2. CONNEXION BDD (CORRECTION SSL) ---
-    // On utilise mysqli_init pour pouvoir passer des options si besoin, 
-    // mais on retire l'exigence SSL pour éviter l'erreur fatale.
+    // --- 2. CONNEXION BDD AVEC SSL (SÉCURISÉ) ---
     $conn = mysqli_init();
+    if (!$conn) { die("Erreur initialisation MySQLi"); }
 
-    // On désactive le SSL ici car ton serveur XAMPP n'est pas configuré pour.
-    // Si tu veux réactiver le SSL plus tard, il faudra configurer MySQL d'abord.
-    $is_connected = @mysqli_real_connect($conn, DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);
+    // Configuration SSL : On indique le chemin vers l'autorité de certification
+    mysqli_ssl_set($conn, NULL, NULL, 'C:/webapp/Detechtive_Jedha/ca-cert.pem', NULL, NULL);
 
-    if ($is_connected) {
+    // Tentative de connexion réelle
+    // Le @ est utilisé pour éviter que PHP n'affiche les erreurs techniques à l'utilisateur
+    if (!@mysqli_real_connect($conn, DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME)) {
+        $conn = false; // La connexion a échoué
+    }
+
+    if ($conn) {
         // --- 3. SÉCURISATION DES ENTRÉES ---
         $agent_safe = mysqli_real_escape_string($conn, $agent_code_input);
         
         // --- 4. REQUÊTE D'AUTHENTIFICATION ---
-        // On cherche l'utilisateur par son identifiant unique
         $sql = "SELECT * FROM agents WHERE username = '$agent_safe'";
         $result = mysqli_query($conn, $sql);
 
@@ -37,6 +40,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
                 
                 // SUCCÈS : Création de la session
                 $_SESSION['agent_id'] = $row['id'];
+                // On récupère le nom complet s'il existe, sinon le pseudo
                 $_SESSION['agent_name'] = isset($row['agent_name']) ? $row['agent_name'] : $row['username'];
                 
                 header("Location: dashboard.php");
@@ -50,8 +54,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['login'])) {
         }
         mysqli_close($conn);
     } else {
-        // En cas d'erreur de connexion (IP, identifiants BDD faux, etc.)
-        $error = "⚠️ ERREUR SYSTÈME : Connexion BDD impossible.";
+        // En cas d'échec SSL ou d'erreur réseau/identifiants
+        // Tu peux ajouter . mysqli_connect_error() pour le debug si besoin
+        $error = "⚠️ ERREUR SYSTÈME : Connexion BDD sécurisée impossible.";
     }
 }
 ?>

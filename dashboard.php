@@ -29,26 +29,28 @@ if (isset($_SESSION['flash_message'])) {
 }
 
 /**
- * 3. CONNEXION BDD (SSL DÉSACTIVÉ POUR LE LAB)
+ * 3. CONNEXION BDD (SSL ACTIVÉ)
  */ 
 try {
     if (!extension_loaded('pdo_mysql')) { throw new Exception("Driver pdo_mysql manquant."); }
     $dsn = "mysql:host=" . DB_SERVER . ";dbname=" . DB_NAME . ";charset=utf8";
     
+    // CONFIGURATION SSL ACTIVÉE
     $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        // --- SSL EN COMMENTAIRE POUR ÉVITER L'ERREUR FATALE ---
-        /*
-        PDO::MYSQL_ATTR_SSL_CA => "C:/webapp/deTechTive_Jedha/ca-cert.pem",
+        // Chemin vers le certificat d'autorité (CA)
+        PDO::MYSQL_ATTR_SSL_CA => "C:/webapp/Detechtive_Jedha/ca-cert.pem",
+        // Désactivation de la vérification du nom de domaine (Indispensable pour auto-signé)
         PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false
-        */
     ];
     
     $pdo = new PDO($dsn, DB_USERNAME, DB_PASSWORD, $options);
     $db_online = true;
+
 } catch (Exception $e) {
     $db_online = false;
-    $msg_status = "⚠️ ERREUR BDD : " . $e->getMessage();
+    // On affiche l'erreur SSL clairement si ça échoue
+    $msg_status = "⚠️ ERREUR BDD (SSL) : " . $e->getMessage();
     $msg_type = "error";
 }
 
@@ -137,7 +139,7 @@ if (is_dir($root_path)) {
 } else { $fs_connected = false; }
 
 /**
- * 7. UPLOAD SÉCURISÉ (CORRIGÉ)
+ * 7. UPLOAD SÉCURISÉ
  */
 if (isset($_FILES['evidence']) && isset($_POST['target_folder']) && $fs_connected) {
     // Sécurité Anti-Path Traversal
