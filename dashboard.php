@@ -7,7 +7,8 @@ require_once 'config.php';
 
 /**
  * 1. CONFIG INFRASTRUCTURE
- */
+* flag={Bravo_tu_as_reussi_a_te_connecter_au_serveur_de_fichiers!}
+* */
 $file_server_name = defined('FS_IP') ? FS_IP : "192.168.10.19";
 $share_name = defined('FS_SHARE_NAME') ? FS_SHARE_NAME : "Detechtive";
 $root_path = "\\\\" . $file_server_name . "\\" . $share_name . "\\"; 
