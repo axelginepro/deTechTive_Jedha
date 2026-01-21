@@ -66,10 +66,4 @@ Ce projet met en avant des compétences spécifiques d'administration sécurisé
 
 ---
 
-## 👤 Auteur
-
-**[Ton Nom/Prénom]**
-* *Lien LinkedIn*
-* *Lien Portfolio*
-
 _Projet réalisé dans le cadre de la formation Cybersecurity Jedha Bootcamp - 2026_
