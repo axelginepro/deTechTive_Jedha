@@ -98,10 +98,4 @@ Pour reproduire cet environnement sous GNS3 :
 
 ---
 
-### 👤 Auteur
-
-**[Ton Nom]** - *Étudiant en Cybersécurité @ Jedha Bootcamp*
-* [LinkedIn](#)
-* [Portfolio](#)
-
 *Projet réalisé dans le cadre de la certification RNCP Niveau 6 "Administrateur d'Infrastructures Sécurisées".*
