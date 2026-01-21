@@ -34,10 +34,10 @@ Le réseau est cloisonné en zones de sécurité, filtrées par un pare-feu **pf
 ### 📸 Vue Logique (GNS3)
 La topologie met en évidence le nœud central de commutation et la distribution des services critiques en VLAN 20.
 
-![Architecture GNS3](gns3.png)
+![Architecture GNS3](docs/gns3.png)
 
 *Schéma conceptuel et plan d'adressage IP :*
-![Plan IP](ip.png)
+![Plan IP](docs/ip.png)
 
 ---
 
