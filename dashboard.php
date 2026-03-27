@@ -148,6 +148,9 @@ $share_root_cmd = "\\\\" . $file_server_name . "\\" . $share_name;
 $cmd_auth = 'net use "' . $share_root_cmd . '" /user:"' . $user_fs . '" "' . $pass_fs . '"';
 exec($cmd_auth . " 2>&1", $output, $return_var); 
 
+// FIX : Initialisation de la variable pour éviter l'erreur si la condition is_dir est fausse.
+$current_view = ""; 
+
 if (is_dir($root_path)) {
     $fs_connected = true;
     if ($my_team_path_relative && is_dir($root_path . $my_team_path_relative)) {
